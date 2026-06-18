@@ -1,0 +1,74 @@
+// Price Tracker — Prisma schema. Full data model authored up front (DESIGN.md §4.1)
+// even though Phase 0 only scaffolds; avoids migration churn in later phases.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProSource {
+  none
+  trial
+  subscription
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  displayName  String    @map("display_name")
+  // Entitlement source of truth. isPro computed dynamically: proExpiresAt != null && now < proExpiresAt
+  proSource    ProSource @default(none) @map("pro_source")
+  proExpiresAt DateTime? @map("pro_expires_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  entries Entry[]
+
+  @@map("users")
+}
+
+model Category {
+  id        String  @id @default(uuid()) @db.Uuid
+  name      String
+  icon      String?
+  isDefault Boolean @default(false) @map("is_default")
+
+  entries Entry[]
+
+  @@map("categories")
+}
+
+model Entry {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  categoryId  String?  @map("category_id") @db.Uuid
+  productName String?  @map("product_name")
+  // Decimal (not float) for money precision.
+  price       Decimal  @db.Decimal(12, 2)
+  currency    String   @default("VND")
+  unit        String?
+  // S3 object key only (e.g. entries/<userId>/<uuid>.jpg), never full URL.
+  photoKey    String?  @map("photo_key")
+  blurhash    String?
+  latitude    Decimal? @db.Decimal(10, 7)
+  longitude   Decimal? @db.Decimal(10, 7)
+  address     String?
+  storeName   String?  @map("store_name")
+  note        String?
+  // Real purchase date — separate from createdAt for accurate time-based reports.
+  purchasedAt DateTime @map("purchased_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([userId, purchasedAt])
+  @@index([userId, categoryId])
+  @@map("entries")
+}

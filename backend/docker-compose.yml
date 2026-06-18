@@ -1,0 +1,13 @@
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      # Uses the shared host Postgres (container "postgres" on host port 2345).
+      # host.docker.internal resolves to the host from inside the container.
+      DATABASE_URL: "postgresql://postgres:postgres@host.docker.internal:2345/price_tracker?schema=public"
+      PORT: 3000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "3000:3000"
