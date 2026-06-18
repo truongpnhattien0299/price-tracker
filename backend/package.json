@@ -5,7 +5,11 @@
   "license": "UNLICENSED",
   "packageManager": "pnpm@10.34.3",
   "pnpm": {
-    "onlyBuiltDependencies": ["@prisma/client", "prisma", "@nestjs/core"]
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "prisma",
+      "@nestjs/core"
+    ]
   },
   "scripts": {
     "build": "nest build",
@@ -21,6 +25,7 @@
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/jwt": "^11.0.0",
+    "@nestjs/mapped-types": "^2.1.1",
     "@nestjs/passport": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
     "@nestjs/throttler": "^6.4.0",

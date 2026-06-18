@@ -47,8 +47,14 @@ Camera-first **image expense diary** (Locket-style UX): open app → camera → 
 ## Current state
 
 - **Phase 0 (Setup) — DONE.** NestJS v11 + Prisma v6 in `backend/`. Full schema migrated (`init`).
-- **Phase 1 (Auth) — DONE.** register/login/refresh/me. JWT access 15m + refresh 7d (stateless, no DB-stored refresh tokens), bcryptjs hash (12 rounds), `JwtStrategy`(passport-jwt) + `JwtAuthGuard`, `@CurrentUser()` decorator, global `ThrottlerGuard` 60/min. Server-granted 1-month trial at register (`proSource='trial'`, `proExpiresAt=now+30d`). `isPro` computed dynamically ([common/entitlement.util.ts](backend/src/common/entitlement.util.ts)) — reuse for `EntitlementGuard` later. `passwordHash` never returned. **All endpoints verified** (register/login/me/refresh + 401/409/400 cases).
-- **Next: Phase 2 — Entries** CRUD + filter + pagination + `/entries/calendar?month=YYYY-MM`. Scope every query by `userId` from JWT. Timezone-aware day grouping.
+- **Phase 1 (Auth) — DONE.** register/login/refresh/me. JWT access 15m + refresh 7d (stateless, no DB-stored refresh tokens), bcryptjs hash (12 rounds), `JwtStrategy`(passport-jwt) + `JwtAuthGuard`, `@CurrentUser()` decorator, global `ThrottlerGuard` 60/min. Server-granted 1-month trial at register (`proSource='trial'`, `proExpiresAt=now+30d`). `isPro` computed dynamically ([common/entitlement.util.ts](backend/src/common/entitlement.util.ts)) — reuse for `EntitlementGuard` later. `passwordHash` never returned. **All endpoints verified**.
+- **Phase 2 (Entries + Categories) — DONE.** All guarded by JWT + scoped by `userId`.
+  - Categories: 8 VN defaults seeded idempotently on boot ([categories.service.ts](backend/src/categories/categories.service.ts)), `GET /categories`.
+  - Entries CRUD: `POST/GET/GET :id/PATCH/DELETE /entries`. Filters `page,limit,category,from,to,search,store` + pagination meta `{page,limit,total,totalPages}`. Ownership → 404 on foreign id. `price`→`Prisma.Decimal`. `categoryId` validated (BadRequest if invalid).
+  - `GET /entries/calendar?month=YYYY-MM&tz=` → `[{date,count,coverPhotoKey}]`, grouped by **local day** via raw SQL `purchased_at AT TIME ZONE 'UTC' AT TIME ZONE $tz` (tz default `Asia/Ho_Chi_Minh`); cover = first photo of day. Verified.
+  - DELETE has `TODO Phase 3`: also delete S3 object at photoKey.
+  - **Known limit**: `search`/`store` use Prisma `contains insensitive` = diacritic-literal (`muống`≠`muong`). Diacritic-insensitive needs Postgres `unaccent` ext — defer.
+- **Next: Phase 3 — Uploads** (S3 presigned PUT/GET URLs), then Phase 4 Reports.
 - Toolchain: Node v20.19.2, npm 11.6.2, Docker 29.4.2.
 
 ## Local dev gotchas
