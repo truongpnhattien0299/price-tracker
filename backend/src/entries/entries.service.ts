@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { UploadsService } from '../uploads/uploads.service';
 import { CreateEntryDto } from './dto/create-entry.dto';
 import { UpdateEntryDto } from './dto/update-entry.dto';
 import { QueryEntriesDto } from './dto/query-entries.dto';
@@ -13,7 +14,10 @@ export interface CalendarCell {
 
 @Injectable()
 export class EntriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly uploads: UploadsService,
+  ) {}
 
   async create(userId: string, dto: CreateEntryDto) {
     await this.assertCategory(dto.categoryId);
@@ -112,9 +116,16 @@ export class EntriesService {
   }
 
   async remove(userId: string, id: string) {
-    await this.findOne(userId, id); // ownership check
-    // TODO Phase 3: also delete the S3 object at photoKey.
+    const entry = await this.findOne(userId, id); // ownership check
     await this.prisma.entry.delete({ where: { id } });
+    // Best-effort S3 cleanup; don't fail the request if the object is gone.
+    if (entry.photoKey) {
+      try {
+        await this.uploads.deleteObject(entry.photoKey);
+      } catch {
+        /* ignore S3 delete errors */
+      }
+    }
     return { id, deleted: true };
   }
 

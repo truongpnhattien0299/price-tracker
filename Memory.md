@@ -52,9 +52,15 @@ Camera-first **image expense diary** (Locket-style UX): open app → camera → 
   - Categories: 8 VN defaults seeded idempotently on boot ([categories.service.ts](backend/src/categories/categories.service.ts)), `GET /categories`.
   - Entries CRUD: `POST/GET/GET :id/PATCH/DELETE /entries`. Filters `page,limit,category,from,to,search,store` + pagination meta `{page,limit,total,totalPages}`. Ownership → 404 on foreign id. `price`→`Prisma.Decimal`. `categoryId` validated (BadRequest if invalid).
   - `GET /entries/calendar?month=YYYY-MM&tz=` → `[{date,count,coverPhotoKey}]`, grouped by **local day** via raw SQL `purchased_at AT TIME ZONE 'UTC' AT TIME ZONE $tz` (tz default `Asia/Ho_Chi_Minh`); cover = first photo of day. Verified.
-  - DELETE has `TODO Phase 3`: also delete S3 object at photoKey.
   - **Known limit**: `search`/`store` use Prisma `contains insensitive` = diacritic-literal (`muống`≠`muong`). Diacritic-insensitive needs Postgres `unaccent` ext — defer.
-- **Next: Phase 3 — Uploads** (S3 presigned PUT/GET URLs), then Phase 4 Reports.
+- **Phase 3 (Uploads/S3) — DONE.** [uploads.service.ts](backend/src/uploads/uploads.service.ts) — `@aws-sdk/client-s3` + presigner.
+  - `POST /uploads/presign {contentType,ext}` → `{uploadUrl, photoKey}` (presigned PUT, 5-min). photoKey = `entries/<userId>/<uuid>.<ext>`. contentType/ext whitelisted (jpeg/png/webp) → 400 otherwise.
+  - `GET /uploads/photo-url?key=` → `{url}` (presigned GET, 5-min). Rejects keys not prefixed `entries/<userId>/` → 403 (ownership). Free-tier lock (DESIGN §14.6) deferred to Phase 10.
+  - S3 client config-driven: `AWS_S3_ENDPOINT`+`AWS_S3_FORCE_PATH_STYLE` for MinIO local dev; omit both in prod → SDK default creds chain (EC2 IAM role). `deleteObject()` exported.
+  - Entry DELETE now best-effort deletes the S3 object (Phase 2 TODO resolved).
+  - **Local dev S3 = MinIO** in docker-compose (`minio` :9000 API / :9001 console, `minio-init` creates bucket `price-tracker-photos`). `.env` points AWS_* at minioadmin/minioadmin. Start: `docker compose up -d minio minio-init`.
+  - **Full roundtrip verified**: presign→PUT→presign GET→download bytes; 400/403/401 cases; entry delete → object `NoSuchKey`.
+- **Next: Phase 4 — Reports** (summary, by-category, time-series day/month/year, top-stores; push aggregation to Postgres GROUP BY/SUM).
 - Toolchain: Node v20.19.2, npm 11.6.2, Docker 29.4.2.
 
 ## Local dev gotchas
