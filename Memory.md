@@ -60,7 +60,13 @@ Camera-first **image expense diary** (Locket-style UX): open app → camera → 
   - Entry DELETE now best-effort deletes the S3 object (Phase 2 TODO resolved).
   - **Local dev S3 = MinIO** in docker-compose (`minio` :9000 API / :9001 console, `minio-init` creates bucket `price-tracker-photos`). `.env` points AWS_* at minioadmin/minioadmin. Start: `docker compose up -d minio minio-init`.
   - **Full roundtrip verified**: presign→PUT→presign GET→download bytes; 400/403/401 cases; entry delete → object `NoSuchKey`.
-- **Next: Phase 4 — Reports** (summary, by-category, time-series day/month/year, top-stores; push aggregation to Postgres GROUP BY/SUM).
+- **Phase 4 (Reports) — DONE.** All aggregate via `$queryRawUnsafe` with `$N` params (userId always `$1::uuid`; dates appended). **Never trust Prisma nested `$queryRaw` template tags for conditionals — produces wrong `$N` syntax** → use `$queryRawUnsafe` + `buildDateWhere()` helper for dynamic WHERE.
+  - `GET /reports/summary?from&to` → `{totalSpent, entryCount, avgPerEntry, currency}`.
+  - `GET /reports/by-category` → `[{categoryName, total, count, percentage}]` (pie chart).
+  - `GET /reports/time-series?groupBy=day|month|year&tz=` → `[{period, total}]`, local-tz bucketing same as calendar.
+  - `GET /reports/top-stores` → `[{storeName, total, count}]` top-10 by spend.
+  - All guarded JWT, all 401 unauthenticated.
+- **Backend DONE (Phases 0–4).** Next = Phase 5 Mobile MVP (Expo, camera-first) or commit + deploy planning.
 - Toolchain: Node v20.19.2, npm 11.6.2, Docker 29.4.2.
 
 ## Local dev gotchas
