@@ -7,21 +7,23 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
-  StyleSheet,
-  Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useCategories } from '../src/api/categories';
-import { createEntry } from '../src/api/entries';
-import { presignUpload, putImageToS3 } from '../src/api/uploads';
-import { useLocation } from '../src/hooks/useLocation';
-import { compressForUpload } from '../src/lib/image';
-import { extractApiError } from '../src/lib/errors';
-import { getLastCategoryId, setLastCategoryId } from '../src/lib/lastCategory';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Text } from '@/components/ui/text';
+import { useCategories } from '@/src/api/categories';
+import { createEntry } from '@/src/api/entries';
+import { presignUpload, putImageToS3 } from '@/src/api/uploads';
+import { useLocation } from '@/src/hooks/useLocation';
+import { extractApiError } from '@/src/lib/errors';
+import { compressForUpload } from '@/src/lib/image';
+import { getLastCategoryId, setLastCategoryId } from '@/src/lib/lastCategory';
 
 export default function CaptureScreen() {
   const router = useRouter();
@@ -86,14 +88,9 @@ export default function CaptureScreen() {
     onError: (e) => setError(extractApiError(e, 'Lưu thất bại')),
   });
 
-  const onSave = () => {
-    setError(null);
-    save.mutate();
-  };
-
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      className="bg-background flex-1"
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
@@ -101,176 +98,116 @@ export default function CaptureScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {photoUri && (
-          <Image source={{ uri: photoUri }} style={styles.photo} contentFit="cover" />
+          <Image
+            source={{ uri: photoUri }}
+            style={{ width: '100%', height: 240 }}
+            contentFit="cover"
+          />
         )}
 
-        <View style={styles.body}>
+        <View className="gap-5 p-5">
           {/* PRICE — fastest path: auto-focused numeric input. */}
-          <Text style={styles.label}>Giá</Text>
-          <View style={styles.priceRow}>
-            <TextInput
-              style={styles.priceInput}
-              placeholder="0"
-              placeholderTextColor="#bbb"
-              keyboardType="number-pad"
-              autoFocus
-              value={price}
-              onChangeText={setPrice}
-            />
-            <Text style={styles.currency}>₫</Text>
-          </View>
-
-          <Text style={styles.label}>Tên sản phẩm (tùy chọn)</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="vd. Rau muống"
-            placeholderTextColor="#bbb"
-            value={productName}
-            onChangeText={setProductName}
-          />
-
-          <Text style={styles.label}>Danh mục</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipRow}
-          >
-            {categories?.map((c) => {
-              const selected = c.id === categoryId;
-              return (
-                <TouchableOpacity
-                  key={c.id}
-                  style={[styles.chip, selected && styles.chipSelected]}
-                  onPress={() => setCategoryId(selected ? null : c.id)}
-                >
-                  <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-                    {c.icon ? `${c.icon} ` : ''}
-                    {c.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-
-          <Text style={styles.label}>Vị trí</Text>
-          <View style={styles.locRow}>
-            <Ionicons name="location-outline" size={18} color="#555" />
-            {loc.loading ? (
-              <Text style={styles.locText}>Đang lấy vị trí…</Text>
-            ) : loc.denied ? (
-              <Text style={styles.locText}>Không có quyền vị trí</Text>
-            ) : (
+          <View className="gap-1.5">
+            <Label nativeID="price">Giá</Label>
+            <View className="flex-row items-center">
               <TextInput
-                style={styles.locInput}
-                placeholder={loc.location?.address ?? 'Tên cửa hàng'}
+                className="text-foreground flex-1 py-1 text-4xl font-bold"
+                placeholder="0"
                 placeholderTextColor="#bbb"
-                value={storeName}
-                onChangeText={setStoreName}
+                keyboardType="number-pad"
+                autoFocus
+                value={price}
+                onChangeText={setPrice}
               />
-            )}
+              <Text className="text-muted-foreground ml-2 text-3xl">₫</Text>
+            </View>
           </View>
 
-          {error && <Text style={styles.error}>{error}</Text>}
+          <View className="gap-1.5">
+            <Label nativeID="name">Tên sản phẩm (tùy chọn)</Label>
+            <Input
+              aria-labelledby="name"
+              placeholder="vd. Rau muống"
+              value={productName}
+              onChangeText={setProductName}
+            />
+          </View>
+
+          <View className="gap-1.5">
+            <Label>Danh mục</Label>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
+            >
+              {categories?.map((c) => {
+                const selected = c.id === categoryId;
+                return (
+                  <Button
+                    key={c.id}
+                    size="sm"
+                    variant={selected ? 'default' : 'outline'}
+                    onPress={() => setCategoryId(selected ? null : c.id)}
+                  >
+                    <Text>
+                      {c.icon ? `${c.icon} ` : ''}
+                      {c.name}
+                    </Text>
+                  </Button>
+                );
+              })}
+            </ScrollView>
+          </View>
+
+          <View className="gap-1.5">
+            <Label>Vị trí</Label>
+            <View className="border-input flex-row items-center gap-2 rounded-md border px-3 py-2.5">
+              <Ionicons name="location-outline" size={18} color="#888" />
+              {loc.loading ? (
+                <Text className="text-muted-foreground">Đang lấy vị trí…</Text>
+              ) : loc.denied ? (
+                <Text className="text-muted-foreground">Không có quyền vị trí</Text>
+              ) : (
+                <TextInput
+                  className="text-foreground flex-1 text-base"
+                  placeholder={loc.location?.address ?? 'Tên cửa hàng'}
+                  placeholderTextColor="#bbb"
+                  value={storeName}
+                  onChangeText={setStoreName}
+                />
+              )}
+            </View>
+          </View>
+
+          {error && <Text className="text-destructive text-sm">{error}</Text>}
         </View>
       </ScrollView>
 
       {/* Action bar */}
-      <View style={[styles.actions, { paddingBottom: insets.bottom + 12 }]}>
-        <TouchableOpacity
-          style={styles.cancel}
-          onPress={() => router.back()}
-          disabled={save.isPending}
-        >
-          <Text style={styles.cancelText}>Hủy</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.save, save.isPending && styles.saveBusy]}
-          onPress={onSave}
+      <View
+        className="border-border flex-row gap-3 border-t px-5 pt-3"
+        style={{ paddingBottom: insets.bottom + 12 }}
+      >
+        <Button variant="secondary" onPress={() => router.back()} disabled={save.isPending}>
+          <Text>Hủy</Text>
+        </Button>
+        <Pressable
+          className={`bg-primary h-10 flex-1 items-center justify-center rounded-md ${
+            save.isPending ? 'opacity-60' : ''
+          }`}
+          onPress={() => {
+            setError(null);
+            save.mutate();
+          }}
           disabled={save.isPending}
         >
           {save.isPending ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color="white" />
           ) : (
-            <Text style={styles.saveText}>Lưu</Text>
+            <Text className="text-primary-foreground font-semibold">Lưu</Text>
           )}
-        </TouchableOpacity>
+        </Pressable>
       </View>
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  photo: { width: '100%', height: 240, backgroundColor: '#eee' },
-  body: { padding: 20 },
-  label: { fontSize: 13, fontWeight: '600', color: '#666', marginTop: 16, marginBottom: 6 },
-  priceRow: { flexDirection: 'row', alignItems: 'center' },
-  priceInput: {
-    flex: 1,
-    fontSize: 40,
-    fontWeight: '700',
-    paddingVertical: 4,
-    color: '#111',
-  },
-  currency: { fontSize: 28, color: '#888', marginLeft: 8 },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  chipRow: { gap: 8, paddingVertical: 2 },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    backgroundColor: '#fafafa',
-  },
-  chipSelected: { backgroundColor: '#111', borderColor: '#111' },
-  chipText: { color: '#333', fontWeight: '500' },
-  chipTextSelected: { color: '#fff' },
-  locRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  locText: { color: '#888' },
-  locInput: { flex: 1, fontSize: 16 },
-  error: { color: '#d00', marginTop: 16 },
-  actions: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  cancel: {
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderRadius: 12,
-    backgroundColor: '#f0f0f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelText: { color: '#333', fontWeight: '600', fontSize: 16 },
-  save: {
-    flex: 1,
-    paddingVertical: 16,
-    borderRadius: 12,
-    backgroundColor: '#111',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saveBusy: { opacity: 0.6 },
-  saveText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-});

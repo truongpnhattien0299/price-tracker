@@ -1,3 +1,4 @@
+import '../global.css';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -40,8 +41,8 @@ function RootNavigator() {
 
   if (status === 'loading') {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }}>
-        <ActivityIndicator color="#fff" />
+      <View className="bg-background flex-1 items-center justify-center">
+        <ActivityIndicator />
       </View>
     );
   }

@@ -1,18 +1,20 @@
 import { Link } from 'expo-router';
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuth } from '../../src/store/auth';
-import { extractApiError } from '../../src/lib/errors';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Text } from '@/components/ui/text';
+import { extractApiError } from '@/src/lib/errors';
+import { useAuth } from '@/src/store/auth';
 
 export default function LoginScreen() {
   const { signIn } = useAuth();
@@ -27,7 +29,6 @@ export default function LoginScreen() {
     setSubmitting(true);
     try {
       await signIn(email.trim(), password);
-      // RootNavigator redirects to camera on success.
     } catch (e) {
       setError(extractApiError(e, 'Đăng nhập thất bại'));
     } finally {
@@ -37,77 +38,54 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.container, { paddingTop: insets.top + 24 }]}
+      className="bg-background flex-1 justify-center px-6"
+      style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Text style={styles.title}>Đăng nhập</Text>
+      <Card className="w-full">
+        <CardHeader>
+          <CardTitle className="text-2xl">Đăng nhập</CardTitle>
+          <CardDescription>Nhập email và mật khẩu để tiếp tục.</CardDescription>
+        </CardHeader>
+        <CardContent className="gap-4">
+          <View className="gap-1.5">
+            <Label nativeID="email">Email</Label>
+            <Input
+              aria-labelledby="email"
+              placeholder="you@example.com"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              autoComplete="email"
+              value={email}
+              onChangeText={setEmail}
+            />
+          </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor="#888"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        autoComplete="email"
-        value={email}
-        onChangeText={setEmail}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Mật khẩu"
-        placeholderTextColor="#888"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
+          <View className="gap-1.5">
+            <Label nativeID="password">Mật khẩu</Label>
+            <Input
+              aria-labelledby="password"
+              placeholder="••••••••"
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+            />
+          </View>
 
-      {error && <Text style={styles.error}>{error}</Text>}
+          {error && <Text className="text-destructive text-sm">{error}</Text>}
 
-      <TouchableOpacity
-        style={[styles.button, submitting && styles.buttonDisabled]}
-        onPress={onSubmit}
-        disabled={submitting}
-      >
-        {submitting ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Đăng nhập</Text>
-        )}
-      </TouchableOpacity>
+          <Button onPress={onSubmit} disabled={submitting} className="mt-2">
+            {submitting ? <ActivityIndicator color="white" /> : <Text>Đăng nhập</Text>}
+          </Button>
 
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>Chưa có tài khoản? </Text>
-        <Link href="/(auth)/register" style={styles.link}>
-          Đăng ký
-        </Link>
-      </View>
+          <View className="flex-row justify-center pt-2">
+            <Text className="text-muted-foreground">Chưa có tài khoản? </Text>
+            <Link href="/(auth)/register">
+              <Text className="font-semibold">Đăng ký</Text>
+            </Link>
+          </View>
+        </CardContent>
+      </Card>
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, paddingHorizontal: 24, backgroundColor: '#fff' },
-  title: { fontSize: 28, fontWeight: '700', marginBottom: 24 },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    marginBottom: 12,
-  },
-  error: { color: '#d00', marginBottom: 12 },
-  button: {
-    backgroundColor: '#111',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
-  footerText: { color: '#555' },
-  link: { color: '#111', fontWeight: '600' },
-});
