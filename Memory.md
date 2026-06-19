@@ -66,8 +66,16 @@ Camera-first **image expense diary** (Locket-style UX): open app → camera → 
   - `GET /reports/time-series?groupBy=day|month|year&tz=` → `[{period, total}]`, local-tz bucketing same as calendar.
   - `GET /reports/top-stores` → `[{storeName, total, count}]` top-10 by spend.
   - All guarded JWT, all 401 unauthenticated.
-- **Backend DONE (Phases 0–4).** Next = Phase 5 Mobile MVP (Expo, camera-first) or commit + deploy planning.
-- Toolchain: Node v20.19.2, npm 11.6.2, Docker 29.4.2.
+- **Backend DONE (Phases 0–4).** Phase 4 committed (`feat(reports)...`).
+- **Phase 5 (Mobile MVP) — CODE DONE, device test pending.** Expo app in `mobile/` (SDK 56, RN 0.85, React 19, **Expo Router** file-based, **newArchEnabled**). Validated by `tsc --noEmit` (clean) + full `expo export --platform ios` (whole module graph + routes bundle clean). **Not yet run on a real device** (camera/GPS need device/emulator).
+  - **Navigation:** Expo Router. `app/_layout.tsx` = providers (SafeArea + React Query + AuthProvider) + auth-gated redirect via `useSegments`. Routes: `app/index.tsx` (Camera home, root), `app/capture.tsx` (modal sheet), `app/(auth)/login.tsx`+`register.tsx`.
+  - **Auth:** `src/store/auth.tsx` (context, bootstrap via `/auth/me`), tokens in `expo-secure-store` (`src/lib/tokens.ts`). `src/api/client.ts` axios + Bearer interceptor + **single-flight 401→refresh→retry**; failed refresh calls `setUnauthorizedHandler` cb → signOut (avoids circular import). Register form sends **displayName** (backend requires it).
+  - **Capture flow (3-tap):** camera `takePictureAsync` → push `/capture?photoUri=`. Sheet: price autofocus (`number-pad`), name, category chips (`useCategories`, remembers last via `src/lib/lastCategory.ts`), GPS via `src/hooks/useLocation.ts` (fires on sheet mount = capture time; reverse-geocode → address/storeName). Save = `compressForUpload` (`src/lib/image.ts`, new `ImageManipulator.manipulate().resize().renderAsync().saveAsync` API, JPEG 0.7, w1080) → `POST /uploads/presign` → **PUT to S3 via raw fetch** (Content-Type `image/jpeg` MUST match signed type) → `POST /entries`. React Query mutation, invalidates `entries`/`calendar`.
+  - **Config:** `app.json` scheme `pricetracker` + camera/location config plugins + iOS infoPlist + Android perms (VN copy). API base from `EXPO_PUBLIC_API_URL` (`.env`, gitignored; `.env.example` committed). ⚠️ phone can't reach `localhost` → `.env` uses LAN IP `192.168.1.55`; Android emulator `10.0.2.2`; iOS sim `localhost`.
+  - **Removed** `react-native-reanimated`+`react-native-gesture-handler` (reanimated 4 needs worklets/babel; not needed for Phase 5 — swipe-up calendar is Phase 6). Expo Router stack works without them.
+  - **blurhash deferred to Phase 6** (optional on POST /entries; keep 3-tap path fast).
+  - **TODO device test:** register→camera, kill/reopen stays logged in, capture→Save → MinIO object under `entries/<userId>/` + `GET /entries` row w/ photoKey+price+coords. Then run on device + commit verified.
+- Toolchain: Node v20.19.2, npm 11.6.2, Docker 29.4.2. Mobile: Expo SDK 56, pnpm.
 
 ## Local dev gotchas
 
