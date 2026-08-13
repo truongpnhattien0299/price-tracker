@@ -1,27 +1,47 @@
 import { Ionicons } from '@expo/vector-icons';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  Camera,
+  useCameraDevice,
+  useCameraPermission,
+  usePhotoOutput,
+} from 'react-native-vision-camera';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 
 export default function CameraScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [permission, requestPermission] = useCameraPermissions();
-  const cameraRef = useRef<CameraView>(null);
+  const { hasPermission, requestPermission } = useCameraPermission();
+  const device = useCameraDevice('back');
   const [capturing, setCapturing] = useState(false);
+
+  // Only stream while this screen is focused — the capture sheet is a modal on top,
+  // and a running session there would waste battery and hold the device.
+  const [isFocused, setIsFocused] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      setIsFocused(true);
+      return () => setIsFocused(false);
+    }, []),
+  );
+
+  // 'jpeg' matches what we presign and PUT to S3 later in the flow.
+  const photoOutput = usePhotoOutput({ containerFormat: 'jpeg', quality: 0.9 });
 
   const onCapture = async () => {
     if (capturing) return;
     setCapturing(true);
     try {
-      const photo = await cameraRef.current?.takePictureAsync({ quality: 1 });
-      if (photo?.uri) {
-        router.push({ pathname: '/capture', params: { photoUri: photo.uri } });
-      }
+      const photo = await photoOutput.capturePhotoToFile({ flashMode: 'off' }, {});
+      // VisionCamera returns a filesystem path; the rest of the app expects a URI.
+      router.push({
+        pathname: '/capture',
+        params: { photoUri: `file://${photo.filePath}` },
+      });
     } catch {
       Alert.alert('Lỗi', 'Không chụp được ảnh. Thử lại.');
     } finally {
@@ -32,11 +52,7 @@ export default function CameraScreen() {
   const comingSoon = () =>
     Alert.alert('Sắp có', 'Tính năng này sẽ có ở phiên bản tiếp theo.');
 
-  if (!permission) {
-    return <View className="flex-1 bg-black" />;
-  }
-
-  if (!permission.granted) {
+  if (!hasPermission) {
     return (
       <View className="flex-1 items-center justify-center bg-black px-6">
         <Ionicons name="camera-outline" size={64} color="#fff" />
@@ -53,9 +69,24 @@ export default function CameraScreen() {
     );
   }
 
+  if (device == null) {
+    return (
+      <View className="flex-1 items-center justify-center bg-black px-6">
+        <Text className="text-center text-base text-white/70">
+          Không tìm thấy camera sau trên thiết bị này.
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View className="flex-1 bg-black">
-      <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
+      <Camera
+        style={StyleSheet.absoluteFill}
+        device={device}
+        outputs={[photoOutput]}
+        isActive={isFocused}
+      />
 
       {/* Top icons: Profile (left) + Stats (right) — placeholders until later phases. */}
       <View

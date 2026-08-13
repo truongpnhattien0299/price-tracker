@@ -36,13 +36,6 @@
       "expo-router",
       "expo-secure-store",
       [
-        "react-native-vision-camera",
-        {
-          "cameraPermissionText": "Ứng dụng dùng camera để chụp ảnh món hàng khi ghi giá.",
-          "enableLocation": false
-        }
-      ],
-      [
         "expo-location",
         {
           "locationWhenInUsePermission": "Ứng dụng dùng vị trí để gắn nơi mua vào mỗi lần ghi giá."

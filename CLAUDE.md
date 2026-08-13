@@ -18,6 +18,12 @@ Design docs at the root:
 
 **Package manager is pnpm, never npm.** Mixing npm over the pnpm tree has broken this repo before.
 
+The globally installed `pnpm` shim has self-updated to 11.x, which requires Node ≥ 22.13 while this machine runs Node 20.19.2 — every bare `pnpm` call dies with `ERR_UNKNOWN_BUILTIN_MODULE: No such built-in module: node:sqlite`. Both packages pin `packageManager: pnpm@10.34.3`, so run pnpm through corepack until Node is upgraded:
+
+```bash
+corepack pnpm@10.34.3 install
+```
+
 Backend (`cd backend`):
 
 ```bash
@@ -79,6 +85,17 @@ Known limitation: `search` / `store` filters use Prisma `contains insensitive`, 
 - `src/api/client.ts` is the single axios instance: bearer-token request interceptor plus a **single-flight 401 → refresh → retry** response interceptor. It calls `setUnauthorizedHandler` (registered by the auth store) instead of importing the store, to avoid a circular import. Refresh uses raw `axios`, not `api`, so it cannot recurse.
 - Tokens live in `expo-secure-store` (`src/lib/tokens.ts`).
 - Capture flow (`app/index.tsx` → `app/capture.tsx` as a modal): take photo → compress (`src/lib/image.ts`, JPEG 0.7 / width 1080) → `POST /uploads/presign` → **raw `fetch` PUT to S3 where the `Content-Type` must match the signed type exactly** → `POST /entries`. GPS is captured on sheet mount (i.e. at capture time). Mutations invalidate the `entries` and `calendar` query keys.
+
+### Camera
+
+The camera is **react-native-vision-camera v5**, which is a full Nitro-based rewrite with an API unlike v4: `useCameraPermission()` (returns `{ hasPermission, requestPermission }`), `useCameraDevice('back')`, `usePhotoOutput()`, and `<Camera device outputs isActive />`. Capture goes through `photoOutput.capturePhotoToFile()`, which returns a **filesystem path, not a `file://` URL** — prefix it before handing the value to the rest of the app.
+
+Two consequences of v5 that are easy to trip over:
+
+- It has **no Expo config plugin** (no `app.plugin.js`), so it must not appear in `app.json` `plugins` — camera permissions are declared by hand in `ios.infoPlist` and `android.permissions`.
+- `react-native-nitro-modules` and `react-native-nitro-image` are unmet peer deps that must be installed as direct dependencies (pnpm isolation again).
+
+It also requires a **dev build** — the app cannot run in Expo Go, and native config changes need `expo prebuild` + a rebuild.
 
 ### Expo / NativeWind constraints
 
