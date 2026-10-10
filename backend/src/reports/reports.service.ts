@@ -1,15 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { EntitlementService } from '../entitlement/entitlement.service';
 import { ReportQueryDto, TimeSeriesQueryDto } from './dto/report-query.dto';
 
 // All queries push aggregation to Postgres (GROUP BY / SUM) — DESIGN.md §8.
 // $queryRawUnsafe used only where we build dynamic WHERE clauses;
 // userId always bound as a typed $N param; date filters passed as ISO strings.
+// Free users only get ranges inside their history window (plans/07 E8).
 @Injectable()
 export class ReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly entitlement: EntitlementService,
+  ) {}
 
   async summary(userId: string, q: ReportQueryDto) {
+    await this.entitlement.assertReportRange(userId, q.from);
     const { where, params } = buildDateWhere(userId, q);
     const rows = await this.prisma.$queryRawUnsafe<
       { total: string; count: string }[]
@@ -32,6 +38,7 @@ export class ReportsService {
   }
 
   async byCategory(userId: string, q: ReportQueryDto) {
+    await this.entitlement.assertReportRange(userId, q.from);
     const { where, params } = buildDateWhere(userId, q, 'e');
     const rows = await this.prisma.$queryRawUnsafe<
       { categoryName: string; total: string; count: string }[]
@@ -59,6 +66,10 @@ export class ReportsService {
   }
 
   async timeSeries(userId: string, q: TimeSeriesQueryDto) {
+    await this.entitlement.assertReportRange(userId, q.from, {
+      groupBy: q.groupBy,
+      tz: q.tz,
+    });
     const fmt =
       q.groupBy === 'day'
         ? 'YYYY-MM-DD'
@@ -90,6 +101,7 @@ export class ReportsService {
   }
 
   async topStores(userId: string, q: ReportQueryDto) {
+    await this.entitlement.assertReportRange(userId, q.from);
     const { where, params } = buildDateWhere(userId, q);
     const rows = await this.prisma.$queryRawUnsafe<
       { storeName: string; total: string; count: string }[]

@@ -1,7 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Entry, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UploadsService } from '../uploads/uploads.service';
+import {
+  Access,
+  EntitlementService,
+  isLocked,
+} from '../entitlement/entitlement.service';
+import { paymentRequired } from '../common/entitlement.util';
 import { CreateEntryDto } from './dto/create-entry.dto';
 import { UpdateEntryDto } from './dto/update-entry.dto';
 import { QueryEntriesDto } from './dto/query-entries.dto';
@@ -10,6 +16,22 @@ export interface CalendarCell {
   date: string;
   count: number;
   coverPhotoKey: string | null;
+  blurhash: string | null;
+  locked: boolean;
+}
+
+// An entry outside a Free user's history window: enough to draw a blurred
+// placeholder, never the photo key or the price (DESIGN.md §14.6).
+export type LockedEntry = Pick<Entry, 'id' | 'purchasedAt' | 'blurhash'> & {
+  locked: true;
+};
+
+function present(entry: Entry, access: Access): (Entry & { locked: false }) | LockedEntry {
+  if (isLocked(access, entry.purchasedAt)) {
+    const { id, purchasedAt, blurhash } = entry;
+    return { id, purchasedAt, blurhash, locked: true };
+  }
+  return { ...entry, locked: false };
 }
 
 @Injectable()
@@ -17,11 +39,14 @@ export class EntriesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly uploads: UploadsService,
+    private readonly entitlement: EntitlementService,
   ) {}
 
   async create(userId: string, dto: CreateEntryDto) {
+    await this.entitlement.assertCanCreate(userId);
     await this.assertCategory(dto.categoryId);
-    return this.prisma.entry.create({
+    if (dto.photoKey) this.uploads.assertOwnKey(userId, dto.photoKey);
+    const entry = await this.prisma.entry.create({
       data: {
         userId,
         categoryId: dto.categoryId ?? null,
@@ -39,6 +64,8 @@ export class EntriesService {
         purchasedAt: dto.purchasedAt ?? new Date(),
       },
     });
+    // Backdated past a Free user's window, it comes back locked like any other read.
+    return present(entry, await this.entitlement.access(userId));
   }
 
   async findAll(userId: string, q: QueryEntriesDto) {
@@ -61,18 +88,21 @@ export class EntriesService {
         : {}),
     };
 
-    const [data, total] = await this.prisma.$transaction([
-      this.prisma.entry.findMany({
-        where,
-        orderBy: { purchasedAt: 'desc' },
-        skip: (q.page - 1) * q.limit,
-        take: q.limit,
-      }),
-      this.prisma.entry.count({ where }),
+    const [access, [data, total]] = await Promise.all([
+      this.entitlement.access(userId),
+      this.prisma.$transaction([
+        this.prisma.entry.findMany({
+          where,
+          orderBy: { purchasedAt: 'desc' },
+          skip: (q.page - 1) * q.limit,
+          take: q.limit,
+        }),
+        this.prisma.entry.count({ where }),
+      ]),
     ]);
 
     return {
-      data,
+      data: data.map((e) => present(e, access)),
       meta: {
         page: q.page,
         limit: q.limit,
@@ -83,14 +113,38 @@ export class EntriesService {
   }
 
   async findOne(userId: string, id: string) {
+    const [entry, access] = await Promise.all([
+      this.getOwned(userId, id),
+      this.entitlement.access(userId),
+    ]);
+    return present(entry, access);
+  }
+
+  // Ownership check: a foreign id is a 404, never a 403.
+  private async getOwned(userId: string, id: string) {
     const entry = await this.prisma.entry.findFirst({ where: { id, userId } });
     if (!entry) throw new NotFoundException('Entry not found');
     return entry;
   }
 
   async update(userId: string, id: string, dto: UpdateEntryDto) {
-    await this.findOne(userId, id); // ownership check (404 if not owner)
+    const [current, access] = await Promise.all([
+      this.getOwned(userId, id),
+      this.entitlement.access(userId),
+    ]);
+    // The response would hand back the price and photo key the window hides.
+    if (isLocked(access, current.purchasedAt)) {
+      throw paymentRequired('HISTORY_LOCKED', 'Entry is outside the Free history window');
+    }
+    // @IsOptional lets null through; these columns are NOT NULL, so null would
+    // otherwise surface as a 500 from Decimal/Prisma. Nullable fields take null to clear.
+    for (const field of ['price', 'currency', 'purchasedAt'] as const) {
+      if (dto[field] === null) {
+        throw new BadRequestException(`${field} cannot be null`);
+      }
+    }
     if (dto.categoryId !== undefined) await this.assertCategory(dto.categoryId);
+    if (dto.photoKey) this.uploads.assertOwnKey(userId, dto.photoKey);
 
     const data: Prisma.EntryUpdateInput = {};
     if (dto.productName !== undefined) data.productName = dto.productName;
@@ -112,33 +166,50 @@ export class EntriesService {
         ? { connect: { id: dto.categoryId } }
         : { disconnect: true };
 
-    return this.prisma.entry.update({ where: { id }, data });
+    const updated = await this.prisma.entry.update({ where: { id }, data });
+    // Photo replaced or removed: the old object is no longer referenced.
+    if (current.photoKey && dto.photoKey !== undefined && dto.photoKey !== current.photoKey) {
+      await this.deletePhoto(current.photoKey);
+    }
+    return present(updated, access);
   }
 
+  // Allowed on locked entries too: hiding data never stops the owner deleting it.
   async remove(userId: string, id: string) {
-    const entry = await this.findOne(userId, id); // ownership check
+    const entry = await this.getOwned(userId, id);
     await this.prisma.entry.delete({ where: { id } });
-    // Best-effort S3 cleanup; don't fail the request if the object is gone.
-    if (entry.photoKey) {
-      try {
-        await this.uploads.deleteObject(entry.photoKey);
-      } catch {
-        /* ignore S3 delete errors */
-      }
-    }
+    if (entry.photoKey) await this.deletePhoto(entry.photoKey);
     return { id, deleted: true };
+  }
+
+  // Best-effort storage (R2) cleanup; don't fail the request if the object is gone.
+  private async deletePhoto(key: string) {
+    try {
+      await this.uploads.deleteObject(key);
+    } catch {
+      /* ignore storage delete errors */
+    }
   }
 
   // Calendar grid for a month, grouped by the user's LOCAL day (DESIGN.md §4.2).
   // Timestamps stored UTC -> reinterpret as UTC then convert to tz before bucketing.
+  // Days before a Free user's history window keep their count but trade the
+  // cover key for its blurhash. The window starts at local midnight, so a day
+  // is never half locked.
   async calendar(userId: string, month: string, tz: string): Promise<CalendarCell[]> {
     const monthStart = `${month}-01`;
-    const rows = await this.prisma.$queryRaw<CalendarCell[]>`
+    const access = await this.entitlement.access(userId, tz);
+    const rows = await this.prisma.$queryRaw<
+      (Omit<CalendarCell, 'locked'> & { firstAt: Date })[]
+    >`
       SELECT
         to_char((purchased_at AT TIME ZONE 'UTC' AT TIME ZONE ${tz})::date, 'YYYY-MM-DD') AS date,
         COUNT(*)::int AS count,
+        MIN(purchased_at) AS "firstAt",
         (array_agg(photo_key ORDER BY purchased_at ASC)
-           FILTER (WHERE photo_key IS NOT NULL))[1] AS "coverPhotoKey"
+           FILTER (WHERE photo_key IS NOT NULL))[1] AS "coverPhotoKey",
+        (array_agg(blurhash ORDER BY purchased_at ASC)
+           FILTER (WHERE photo_key IS NOT NULL))[1] AS blurhash
       FROM entries
       WHERE user_id = ${userId}::uuid
         AND (purchased_at AT TIME ZONE 'UTC' AT TIME ZONE ${tz})::date >= ${monthStart}::date
@@ -146,7 +217,10 @@ export class EntriesService {
       GROUP BY date
       ORDER BY date ASC;
     `;
-    return rows;
+    return rows.map(({ firstAt, ...cell }) => {
+      const locked = isLocked(access, firstAt);
+      return { ...cell, coverPhotoKey: locked ? null : cell.coverPhotoKey, locked };
+    });
   }
 
   private async assertCategory(categoryId?: string | null) {

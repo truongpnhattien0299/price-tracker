@@ -2,35 +2,51 @@ import {
   BadRequestException,
   Body,
   Controller,
-  ForbiddenException,
   Get,
+  HttpCode,
   Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
 import { UploadsService } from './uploads.service';
 import { PresignDto } from './dto/presign.dto';
+import { PhotoUrlsDto } from './dto/photo-urls.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthUser } from '../auth/strategies/jwt.strategy';
+import { EntitlementService } from '../entitlement/entitlement.service';
 
 @Controller('uploads')
 @UseGuards(JwtAuthGuard)
 export class UploadsController {
-  constructor(private readonly uploads: UploadsService) {}
+  constructor(
+    private readonly uploads: UploadsService,
+    private readonly entitlement: EntitlementService,
+  ) {}
 
   @Post('presign')
   presign(@CurrentUser() user: AuthUser, @Body() dto: PresignDto) {
     return this.uploads.presignUpload(user.userId, dto);
   }
 
+  // Photos of entries outside a Free user's history window are refused (DESIGN.md §14.6).
   @Get('photo-url')
-  photoUrl(@CurrentUser() user: AuthUser, @Query('key') key?: string) {
+  async photoUrl(@CurrentUser() user: AuthUser, @Query('key') key?: string) {
     if (!key) throw new BadRequestException('key is required');
-    // Only allow access to the caller's own objects.
-    if (!key.startsWith(`entries/${user.userId}/`)) {
-      throw new ForbiddenException('Not allowed to access this object');
-    }
+    this.uploads.assertOwnKey(user.userId, key);
+    await this.entitlement.assertKeysVisible(user.userId, [key]);
     return this.uploads.presignGet(key);
+  }
+
+  // Batch variant of photo-url. POST because a month of keys can be long.
+  @Post('photo-urls')
+  @HttpCode(200)
+  async photoUrls(@CurrentUser() user: AuthUser, @Body() dto: PhotoUrlsDto) {
+    for (const key of dto.keys) this.uploads.assertOwnKey(user.userId, key);
+    await this.entitlement.assertKeysVisible(user.userId, dto.keys);
+    const urls = await Promise.all(
+      dto.keys.map(async (key) => [key, (await this.uploads.presignGet(key)).url] as const),
+    );
+    return { urls: Object.fromEntries(urls) };
   }
 }

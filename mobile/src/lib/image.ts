@@ -1,6 +1,6 @@
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
-// Resize + JPEG-compress before upload — keeps the S3 object small and the
+// Resize + JPEG-compress before upload — keeps the stored (R2) object small and the
 // capture path fast (DESIGN §7). Returns a new local file uri.
 export async function compressForUpload(uri: string): Promise<string> {
   const context = ImageManipulator.manipulate(uri);

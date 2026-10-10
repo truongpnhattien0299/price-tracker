@@ -1,0 +1,56 @@
+# Render Blueprint for the NestJS API (backend/). Dashboard → New → Blueprint.
+# Postgres lives on Neon and photos on Cloudflare R2, so only the web service
+# is defined here. Free plan: no pre-deploy command, so migrations run in the
+# build step. Values with `sync: false` are prompted for on first create.
+services:
+  - type: web
+    name: price-tracker-api
+    runtime: node
+    plan: free
+    region: singapore # same region as the Neon project (aws-ap-southeast-1)
+    branch: main
+    rootDir: backend # also limits auto-deploys to changes under backend/
+    buildCommand: >-
+      corepack enable &&
+      pnpm install --frozen-lockfile &&
+      pnpm exec prisma migrate deploy &&
+      pnpm run build
+    startCommand: node dist/main
+    # Liveness route that skips the DB, so health checks don't keep Neon awake.
+    healthCheckPath: /api/v1/health/live
+    envVars:
+      # .nvmrc sits at the repo root, outside rootDir. Do NOT set NODE_ENV=production:
+      # pnpm would then skip devDependencies (@nestjs/cli, prisma) and the build fails.
+      - key: NODE_VERSION
+        value: 22.13.0
+      - key: TRUST_PROXY
+        value: "1"
+
+      # Neon direct (non-pooled) URL + ?sslmode=require&connect_timeout=15
+      - key: DATABASE_URL
+        sync: false
+
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_TTL
+        value: 15m
+      - key: JWT_REFRESH_TTL
+        value: 7d
+      - key: TRIAL_DURATION_DAYS
+        value: "30"
+
+      # Cloudflare R2 — see docs/storage-r2.md
+      - key: STORAGE_ENDPOINT
+        sync: false # https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+      - key: STORAGE_REGION
+        value: auto
+      - key: STORAGE_FORCE_PATH_STYLE
+        value: "false"
+      - key: STORAGE_BUCKET
+        sync: false
+      - key: STORAGE_ACCESS_KEY_ID
+        sync: false
+      - key: STORAGE_SECRET_ACCESS_KEY
+        sync: false

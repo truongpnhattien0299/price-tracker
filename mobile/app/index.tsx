@@ -29,7 +29,7 @@ export default function CameraScreen() {
     }, []),
   );
 
-  // 'jpeg' matches what we presign and PUT to S3 later in the flow.
+  // 'jpeg' matches what we presign and PUT to storage later in the flow.
   const photoOutput = usePhotoOutput({ containerFormat: 'jpeg', quality: 0.9 });
 
   const onCapture = async () => {
