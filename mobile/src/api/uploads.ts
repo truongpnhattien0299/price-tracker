@@ -13,9 +13,9 @@ export async function presignUpload(
   return data;
 }
 
-// PUT the local image straight to S3 — NOT through `api` (no auth header, and the URL
-// is already signed). The Content-Type MUST match what the backend signed, or S3 rejects it.
-export async function putImageToS3(
+// PUT the local image straight to storage (R2) — NOT through `api` (no auth header, and the URL
+// is already signed). The Content-Type MUST match what the backend signed, or storage rejects it.
+export async function putImageToStorage(
   uploadUrl: string,
   localUri: string,
   contentType: string,
@@ -30,6 +30,6 @@ export async function putImageToS3(
   });
 
   if (!res.ok) {
-    throw new Error(`S3 upload failed (${res.status})`);
+    throw new Error(`Photo upload failed (${res.status})`);
   }
 }

@@ -118,12 +118,12 @@ export class EntriesService {
   async remove(userId: string, id: string) {
     const entry = await this.findOne(userId, id); // ownership check
     await this.prisma.entry.delete({ where: { id } });
-    // Best-effort S3 cleanup; don't fail the request if the object is gone.
+    // Best-effort storage (R2) cleanup; don't fail the request if the object is gone.
     if (entry.photoKey) {
       try {
         await this.uploads.deleteObject(entry.photoKey);
       } catch {
-        /* ignore S3 delete errors */
+        /* ignore storage delete errors */
       }
     }
     return { id, deleted: true };

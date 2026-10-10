@@ -18,25 +18,29 @@ export class UploadsService {
   private readonly bucket: string;
 
   constructor(private readonly config: ConfigService) {
-    this.bucket = this.config.getOrThrow<string>('AWS_S3_BUCKET');
-    const endpoint = this.config.get<string>('AWS_S3_ENDPOINT');
-    const accessKeyId = this.config.get<string>('AWS_ACCESS_KEY_ID');
-    const secretAccessKey = this.config.get<string>('AWS_SECRET_ACCESS_KEY');
+    this.bucket = this.config.getOrThrow<string>('STORAGE_BUCKET');
 
+    // Any S3-compatible store: Cloudflare R2 in prod, MinIO in local dev.
+    // Endpoint + keys are always explicit — R2 has no IAM-role credential chain.
     this.s3 = new S3Client({
-      region: this.config.get<string>('AWS_REGION') ?? 'ap-southeast-1',
-      // Set for MinIO/local dev; omitted in prod (real S3 on EC2 uses IAM role).
-      ...(endpoint ? { endpoint } : {}),
+      region: this.config.get<string>('STORAGE_REGION') ?? 'auto',
+      endpoint: this.config.getOrThrow<string>('STORAGE_ENDPOINT'),
       forcePathStyle:
-        this.config.get<string>('AWS_S3_FORCE_PATH_STYLE') === 'true',
-      // Explicit creds only when provided; otherwise SDK default chain (IAM role).
-      ...(accessKeyId && secretAccessKey
-        ? { credentials: { accessKeyId, secretAccessKey } }
-        : {}),
+        this.config.get<string>('STORAGE_FORCE_PATH_STYLE') === 'true',
+      credentials: {
+        accessKeyId: this.config.getOrThrow<string>('STORAGE_ACCESS_KEY_ID'),
+        secretAccessKey: this.config.getOrThrow<string>(
+          'STORAGE_SECRET_ACCESS_KEY',
+        ),
+      },
+      // SDK ≥3.729 otherwise signs `x-amz-checksum-crc32` of an EMPTY body into
+      // presigned PUT URLs, so R2 rejects the real upload with a checksum mismatch.
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
     });
   }
 
-  // Presigned PUT — client uploads the image bytes straight to S3.
+  // Presigned PUT — client uploads the image bytes straight to storage (R2).
   async presignUpload(userId: string, dto: PresignDto) {
     const photoKey = `entries/${userId}/${randomUUID()}.${dto.ext}`;
     const uploadUrl = await getSignedUrl(

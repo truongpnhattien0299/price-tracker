@@ -19,7 +19,7 @@ import { Label } from '@/components/ui/label';
 import { Text } from '@/components/ui/text';
 import { useCategories } from '@/src/api/categories';
 import { createEntry } from '@/src/api/entries';
-import { presignUpload, putImageToS3 } from '@/src/api/uploads';
+import { presignUpload, putImageToStorage } from '@/src/api/uploads';
 import { useLocation } from '@/src/hooks/useLocation';
 import { extractApiError } from '@/src/lib/errors';
 import { compressForUpload } from '@/src/lib/image';
@@ -62,10 +62,10 @@ export default function CaptureScreen() {
       if (!value || value <= 0) throw new Error('Nhập giá hợp lệ.');
       if (!photoUri) throw new Error('Thiếu ảnh.');
 
-      // 1. compress → 2. presign → 3. PUT to S3 → 4. create entry
+      // 1. compress → 2. presign → 3. PUT to storage → 4. create entry
       const compressed = await compressForUpload(photoUri);
       const { uploadUrl, photoKey } = await presignUpload('image/jpeg', 'jpg');
-      await putImageToS3(uploadUrl, compressed, 'image/jpeg');
+      await putImageToStorage(uploadUrl, compressed, 'image/jpeg');
 
       return createEntry({
         price: value,

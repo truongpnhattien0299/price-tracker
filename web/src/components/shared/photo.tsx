@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 
 /**
- * An S3 photo behind a presigned URL. Plain `<img>`, not `next/image`: the
+ * A storage (R2) photo behind a presigned URL. Plain `<img>`, not `next/image`: the
  * signed URL changes on every refresh and expires in 5 minutes, so the Next
  * optimizer would only cache dead URLs.
  *
@@ -43,7 +43,7 @@ export function Photo({
     <div className={cn("relative overflow-hidden", className)}>
       {state.status !== "loaded" && <Skeleton className="absolute inset-0 rounded-none" />}
       {src && (
-        // eslint-disable-next-line @next/next/no-img-element -- presigned S3 URL, see above
+        // eslint-disable-next-line @next/next/no-img-element -- presigned storage URL, see above
         <img
           src={src}
           alt={alt}
