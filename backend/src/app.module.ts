@@ -10,6 +10,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { EntriesModule } from './entries/entries.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { ReportsModule } from './reports/reports.module';
+import { EntitlementModule } from './entitlement/entitlement.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { ReportsModule } from './reports/reports.module';
     EntriesModule,
     UploadsModule,
     ReportsModule,
+    EntitlementModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

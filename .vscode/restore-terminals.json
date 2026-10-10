@@ -1,0 +1,21 @@
+{
+  "runOnStartup": true,
+  "terminals": [
+    {
+      "splitTerminals": [
+        {
+          "name": "backend",
+          "commands": ["nvm use; cd backend; pnpm start:dev"]
+        }
+      ]
+    },
+    {
+      "splitTerminals": [
+        {
+          "name": "web",
+          "commands": ["nvm use; cd web; pnpm dev"]
+        }
+      ]
+    }
+  ]
+}
