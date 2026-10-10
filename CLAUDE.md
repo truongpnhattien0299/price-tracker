@@ -8,6 +8,7 @@ Two independent packages, each with its own `package.json` / lockfile — there 
 
 - `backend/` — NestJS 11 + Prisma 6 + PostgreSQL REST API.
 - `mobile/` — Expo SDK 54 (React Native 0.81, Expo Router 6) camera-first app.
+- `web/` — Next.js 15 (App Router) + Tailwind v4 + shadcn/ui (Radix base, `radix-nova` style): landing page + web dashboard.
 
 Design docs at the root:
 
@@ -45,6 +46,16 @@ pnpm run ios | android | web
 pnpm exec tsc --noEmit           # primary correctness gate
 pnpm exec expo export --platform ios   # full module-graph check (prod bundle)
 ```
+
+Web (`cd web`, dev server on **:3001** because the API owns :3000):
+
+```bash
+pnpm run dev                     # http://localhost:3001
+pnpm run typecheck && pnpm run lint && pnpm run build
+pnpm dlx shadcn@latest add <component>   # needs a pnpm-10 shim on PATH, see below
+```
+
+The shadcn CLI shells out to bare `pnpm`, which hits the broken 11.x shim. Put a corepack shim first on PATH: `corepack enable --install-directory <dir> pnpm && PATH=<dir>:$PATH pnpm dlx shadcn@latest add …`.
 
 There is **no test suite and no linter configured** in either package. `tsc --noEmit` plus a real dev bundle are the verification steps used so far. A production `expo export` can pass while the **dev** bundle fails (dev-only subpaths) — check the dev bundle when touching Metro/Babel/NativeWind config:
 
@@ -104,6 +115,15 @@ It also requires a **dev build** — the app cannot run in Expo Go, and native c
 UI is react-native-reusables (shadcn/ui for RN) on NativeWind v4 + Tailwind v3. Config is interdependent — `babel.config.js` (jsxImportSource `nativewind`, `react-native-worklets/plugin` must be **last**), `metro.config.js` (`withNativeWind({ input: './global.css' })`), `tailwind.config.js` (`nativewind/preset` + shadcn HSL vars), `global.css` (imported at the top of `app/_layout.tsx`).
 
 pnpm-specific traps: `react-native-css-interop` must stay a **direct dependency** pinned to the version `nativewind` depends on, because the NativeWind babel transform emits an import resolved from the project root and pnpm's isolation hides the nested copy. The react-native-reusables CLI also does not install `class-variance-authority` / `clsx` / `tailwind-merge` — add them manually.
+
+## Web architecture
+
+Route groups under `web/src/app/`: `(marketing)` → `/` (landing), `(auth)` → `/login`, `/register`, `(dashboard)` → `/dashboard/*` (shadcn `Sidebar` shell). Non-route code: `components/{marketing,auth,dashboard,shared}`, `components/ui/` (shadcn-generated — regenerate, don't hand-edit), `config/` (site + nav), `lib/api/` (fetch client with single-flight 401 → refresh, one function per backend route in `endpoints.ts`), `types/api.ts` (mirrors backend DTOs; money is a Decimal **string**).
+
+- Font is Be Vietnam Pro — Geist has no Vietnamese subset. Font CSS variables must sit on `<html>`, because `globals.css` applies `font-sans` there.
+- **Auth is a BFF** (plans/01): browser → same-origin `/api/auth/*` and `/api/backend/[...path]` route handlers → NestJS (server-only `API_URL`). JWTs live only in httpOnly cookies `pt_access` / `pt_refresh`; the proxy refreshes on 401 and clears cookies when refresh fails. Non-GET requests need a same-host `Origin` header (CSRF check) — add `-H 'Origin: http://localhost:3001'` when testing with curl. `src/middleware.ts` gates `/dashboard/*` on cookie presence only.
+- Dashboard pages still render `lib/mock-data.ts` until plans/02 wires them through React Query.
+- `next build` shares `.next/` with the dev server — restart `pnpm run dev` after building.
 
 ## Working conventions
 

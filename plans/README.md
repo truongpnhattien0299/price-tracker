@@ -1,0 +1,31 @@
+# Plans — web (`web/`)
+
+Kế hoạch phát triển web app (Next.js 15 + shadcn/ui). Mỗi plan là một file đánh số, làm theo thứ tự; plan sau giả định plan trước đã xong.
+
+## Quyết định đã chốt (2026-10-10)
+
+| # | Vấn đề | Quyết định |
+|---|---|---|
+| D1 | Lưu token | **httpOnly cookie** do Next.js route handler (BFF) set. Browser không bao giờ đọc được JWT. |
+| D2 | Chặn route | **`middleware.ts`** redirect `/dashboard/*` ↔ `/login` dựa trên sự có mặt của cookie. |
+| D3 | Data layer | **TanStack React Query** ở client, gọi API qua BFF proxy cùng origin. |
+
+## Lộ trình
+
+| Plan | Nội dung | Trạng thái |
+|---|---|---|
+| [01](01-auth-cookie-bff.md) | Auth: BFF route handlers + httpOnly cookie + middleware | ✅ Xong 2026-10-10 |
+| [02](02-react-query-wiring.md) | React Query + nối dashboard với API thật, bỏ mock data | ⏳ Làm trước |
+| 03 | Calendar: lưới ảnh theo tháng (`/entries/calendar` + presigned photo URL) | Chưa viết |
+| 04 | CRUD entry trên web (sửa / xoá, có thể upload ảnh) | Chưa viết |
+| 05 | Landing: nội dung thật, ảnh app, link store, giá Pro | Chưa viết |
+| 06 | Theme / brand color | Chưa viết |
+| 07 | Entitlement: trial còn lại, khoá dữ liệu > 3 tháng (cần backend Phase 10) | Chưa viết |
+
+## Cách verify chung
+
+Repo không có test suite. Mỗi plan coi là xong khi:
+
+1. `pnpm run typecheck && pnpm run lint && pnpm run build` pass (trong `web/`, chạy pnpm qua `corepack pnpm@10.34.3`).
+2. Backend chạy ở `:3000`, web ở `:3001`, đi hết các luồng trong mục **Verify** của plan bằng browser.
+3. Cập nhật bảng trạng thái ở trên + phần Web trong `CLAUDE.md` nếu kiến trúc thay đổi.
