@@ -88,10 +88,18 @@ Camera-first **image expense diary** (Locket-style UX): open app → camera → 
     - Needs a **dev build** (not Expo Go). Requires `newArchEnabled: true` (already set).
     - Verified: `tsc --noEmit` clean, `expo export --platform ios` clean, dev iOS bundle HTTP 200 / 10.7MB. **Still not run on a device.**
   - **TODO device test:** register→camera, kill/reopen stays logged in, capture→Save → MinIO object under `entries/<userId>/` + `GET /entries` row w/ photoKey+price+coords. Then run on device + commit verified.
-- **Web (`web/`, Next.js 15 + shadcn) — plans 01–06 DONE** (2026-10-10, see `plans/README.md`): BFF auth, React Query dashboard, calendar, entry CRUD + upload, landing, brand theme.
+- **Phase 10 (Freemium) — backend PARTIAL DONE (2026-10-10, plans/07).** `GET /me/entitlement`, 50 entries/month cap → 402 `ENTRY_LIMIT`, 3-month history lock (entries/calendar/photo URLs/reports) → 402 `HISTORY_LOCKED` / `PRO_ONLY`. Not done: RevenueCat webhook, IAP, email verification, mobile 402 handling. Free limits only hit users whose trial ended; to test, set `proExpiresAt` to the past via Prisma.
+- **Web (`web/`, Next.js 15 + shadcn) — plans 01–07 DONE** (2026-10-10, see `plans/README.md`): BFF auth, React Query dashboard, calendar, entry CRUD + upload, landing, brand theme, entitlement UI (plan card, locked rows/days, cap alert, Free report window).
   - Landing (plans/05) is static and never invents facts: Pro prices live in `web/src/config/pricing.ts` (`null` → "Sắp công bố", set both → monthly/yearly toggle), store buttons read `NEXT_PUBLIC_APP_STORE_URL` / `NEXT_PUBLIC_PLAY_STORE_URL` (empty → disabled "Sắp có"). Update both when prices are fixed / the app ships. App visuals are JSX mockups (`PhoneMockup`, shared `MonthGrid`), not screenshots.
   - Brand color (plans/06) is a **default I picked, not a decided brand**: green hue 152 (`#05773b` light / `#58c97d` dark, both WCAG AA). Mobile still has the neutral shadcn primary — HSL equivalents are in plans/06 "Ngoài phạm vi".
 - Toolchain: Node v20.19.2, npm 11.6.2, Docker 29.4.2. Mobile: Expo SDK 56, pnpm.
+
+## Agent skills
+
+- Project skills live in **`.claude/skills/`**: `shadcn`, `frontend-design`, `migrate-radix-to-base`. Each is a relative symlink (`../../.agents/skills/<name>`) into the repo's git-tracked `.agents/skills/`, pinned by `skills-lock.json` (installed with the `skills` CLI from `shadcn/ui` and `anthropics/skills`).
+- They don't appear in Claude Code's Skill tool listing → "load skill X" means read `.claude/skills/X/SKILL.md` plus the files it links (`shadcn/rules/*.md` etc.).
+- `~/.agents/skills/` has **older global copies** — don't read those. The project `shadcn` is newer (adds `design-system.md`, `design-system-page.md`, `scripts/`); `rules/` are the same. `find-skills` exists only globally.
+- Web UI work follows `shadcn` (radix base: `asChild`, `type="single"`, sonner). `frontend-design` only when designing a new screen or reshaping one.
 
 ## Local dev gotchas
 
