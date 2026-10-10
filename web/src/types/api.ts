@@ -83,6 +83,8 @@ export type EntryInput = {
   unit?: string | null
   categoryId?: string | null
   photoKey?: string | null
+  latitude?: number | null
+  longitude?: number | null
   address?: string | null
   storeName?: string | null
   note?: string | null
@@ -102,6 +104,34 @@ export type EntryQuery = {
   to?: string
   search?: string
   store?: string
+}
+
+export type MapQuery = { from?: string; to?: string; category?: string }
+
+/** One entry on the map. Coordinates are numbers here, unlike `Entry.latitude`. */
+export type MapPoint = {
+  id: string
+  lat: number
+  lng: number
+  photoKey: string | null
+  blurhash: string | null
+  purchasedAt: string
+  price: string
+  currency: string
+  productName: string | null
+  storeName: string | null
+  categoryId: string | null
+}
+
+/** GET /entries/map. A Free user's range is clamped to the history window; `lockedCount` is what it hid. */
+export type MapPoints = { points: MapPoint[]; truncated: boolean; lockedCount: number }
+
+/** BFF `GET /api/geocode/reverse` (Nominatim, plans/08 M11). */
+export type ReverseGeocode = {
+  /** Street, ward, city — what goes in the entry's address field. */
+  address: string | null
+  /** The place's own name when the spot is a shop, market or eatery. */
+  placeName: string | null
 }
 
 export type CalendarDay = {

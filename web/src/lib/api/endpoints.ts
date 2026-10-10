@@ -7,9 +7,12 @@ import type {
   EntryQuery,
   EntryRow,
   GroupBy,
+  MapPoints,
+  MapQuery,
   Paginated,
   ReportRange,
   ReportSummary,
+  ReverseGeocode,
   TimeSeriesPoint,
   TopStore,
   User,
@@ -45,9 +48,16 @@ export const entriesApi = {
   get: (id: string) => apiFetch<EntryRow>(`/entries/${id}`),
   calendar: (month: string, tz?: string) =>
     apiFetch<CalendarDay[]>("/entries/calendar", { query: { month, tz } }),
+  map: (query: MapQuery = {}) => apiFetch<MapPoints>("/entries/map", { query }),
   create: (body: EntryInput) => apiFetch<EntryRow>("/entries", { method: "POST", body }),
   update: (id: string, body: EntryInput) => apiFetch<EntryRow>(`/entries/${id}`, { method: "PATCH", body }),
   remove: (id: string) => apiFetch<void>(`/entries/${id}`, { method: "DELETE" }),
+}
+
+// BFF route (not the NestJS API): Nominatim behind one shared rate limit.
+export const geocodeApi = {
+  reverse: (lat: number, lng: number) =>
+    request<ReverseGeocode>("/api/geocode/reverse", { query: { lat, lng } }),
 }
 
 export const uploadsApi = {
