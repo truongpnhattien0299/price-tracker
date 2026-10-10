@@ -1,8 +1,9 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Be_Vietnam_Pro, Geist_Mono } from "next/font/google"
 
 import { Providers } from "@/components/shared/providers"
 import { siteConfig } from "@/config/site"
+import { brandHex } from "@/lib/brand"
 
 import "./globals.css"
 
@@ -26,7 +27,15 @@ export const metadata: Metadata = {
     description: siteConfig.description,
     url: "/",
   },
-  twitter: { card: "summary", title: siteConfig.name, description: siteConfig.description },
+  twitter: { card: "summary_large_image", title: siteConfig.name, description: siteConfig.description },
+}
+
+// Mobile browser chrome matches the page background in each colour scheme.
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: brandHex.background },
+    { media: "(prefers-color-scheme: dark)", color: brandHex.backgroundDark },
+  ],
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

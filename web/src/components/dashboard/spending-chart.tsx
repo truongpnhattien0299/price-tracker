@@ -14,7 +14,7 @@ import { formatMoney } from "@/lib/format"
 import type { GroupBy, ReportRange, TimeSeriesPoint } from "@/types/api"
 
 const config = {
-  total: { label: "Chi tiêu", color: "var(--chart-2)" },
+  total: { label: "Chi tiêu", color: "var(--chart-1)" },
 } satisfies ChartConfig
 
 // "2026-10-05" → "05/10", "2026-10" → "10/26", "2026" → "2026".

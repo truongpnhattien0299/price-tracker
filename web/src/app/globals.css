@@ -62,7 +62,9 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
+  /* Brand: green, hue 152 (plans/06). White text on it is 5.4:1. To rebrand,
+     change --primary, --ring, --chart-* and --sidebar-primary/-ring together. */
+  --primary: oklch(0.5 0.13 152);
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
@@ -73,21 +75,22 @@
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --ring: oklch(0.65 0.12 152);
+  /* One hue, stepped in lightness: chart-1 is the brand, the rest for extra series. */
+  --chart-1: oklch(0.5 0.13 152);
+  --chart-2: oklch(0.65 0.14 152);
+  --chart-3: oklch(0.78 0.11 152);
+  --chart-4: oklch(0.4 0.09 152);
+  --chart-5: oklch(0.88 0.06 152);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary: oklch(0.5 0.13 152);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: oklch(0.65 0.12 152);
   /* Auth side panel: neutral with a faint leaf tint, behind the month preview. */
   --auth-panel: oklch(0.965 0.012 130);
   /* Photo stand-ins in the month preview, one per grocery category. Same in
@@ -107,8 +110,9 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
+  /* Lighter brand on dark: 8.9:1 against its own text, 9.4:1 as text on background. */
+  --primary: oklch(0.75 0.15 152);
+  --primary-foreground: oklch(0.18 0.03 152);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -118,20 +122,20 @@
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --ring: oklch(0.6 0.12 152);
+  --chart-1: oklch(0.75 0.15 152);
+  --chart-2: oklch(0.62 0.14 152);
+  --chart-3: oklch(0.85 0.1 152);
+  --chart-4: oklch(0.5 0.11 152);
+  --chart-5: oklch(0.4 0.08 152);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.75 0.15 152);
+  --sidebar-primary-foreground: oklch(0.18 0.03 152);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-ring: oklch(0.6 0.12 152);
   --auth-panel: oklch(0.2 0.012 130);
 }
 
