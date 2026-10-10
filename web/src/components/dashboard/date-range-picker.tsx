@@ -24,11 +24,14 @@ export function DateRangePicker({
   onChange,
   placeholder = "Chọn khoảng ngày",
   clearable,
+  minDate,
 }: {
   value: DateRange | undefined
   onChange: (range: DateRange | undefined) => void
   placeholder?: string
   clearable?: boolean
+  /** Earliest pickable day, e.g. the start of a Free user's history window. */
+  minDate?: Date
 }) {
   return (
     <div className="flex items-center gap-1">
@@ -49,7 +52,8 @@ export function DateRangePicker({
             locale={dayPickerVi}
             // The locale's "Th 2"…"Th 7" don't fit a day cell; use "T2"…"CN".
             formatters={{ formatWeekdayName: (d) => (d.getDay() === 0 ? "CN" : `T${d.getDay() + 1}`) }}
-            disabled={{ after: new Date() }}
+            disabled={minDate ? [{ before: minDate }, { after: new Date() }] : { after: new Date() }}
+            startMonth={minDate}
           />
         </PopoverContent>
       </Popover>

@@ -6,7 +6,9 @@ export const proPrice: { monthly: number | null; yearly: number | null } = {
   yearly: null,
 }
 
-// Free tier limits from DESIGN.md §14.1 — enforced by the backend in plan 07.
+// Free tier limits from DESIGN.md §14.1, for the static landing only. The backend
+// enforces its own copy (FREE_LIMITS in backend/src/common/entitlement.util.ts) and
+// the dashboard reads the numbers from /me/entitlement — keep the two in sync.
 export const freeLimits = {
   entriesPerMonth: 50,
   historyMonths: 3,

@@ -11,6 +11,7 @@ import { StatCards } from "@/components/dashboard/stat-cards"
 import { EmptyState, QueryContent } from "@/components/shared/query-state"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useEntitlement } from "@/hooks/queries/use-entitlement"
 import { useEntries } from "@/hooks/queries/use-entries"
 import {
   useCategoryBreakdown,
@@ -24,11 +25,15 @@ const RECENT = { limit: 5 }
 export function OverviewView() {
   // Fixed per mount so query keys stay stable across re-renders.
   const month = useMemo(() => currentMonthRange(), [])
-  const sixMonths = useMemo(() => lastNMonthsRange(6), [])
+  // Free reports stop at the 3-month history window (plans/07 E8); wait for the plan
+  // rather than fetch a range the API would refuse. Unknown plan → the safe 3.
+  const entitlement = useEntitlement()
+  const months = entitlement.isPending ? null : entitlement.data?.isPro ? 6 : 3
+  const trend = useMemo(() => lastNMonthsRange(months ?? 3), [months])
 
   const summary = useReportSummary(month)
   const byCategory = useCategoryBreakdown(month)
-  const series = useTimeSeries("month", sixMonths)
+  const series = useTimeSeries("month", trend, { enabled: months !== null })
   const recent = useEntries(RECENT)
 
   return (
@@ -39,9 +44,9 @@ export function OverviewView() {
           <SpendingChart
             query={series}
             groupBy="month"
-            range={sixMonths}
+            range={trend}
             title="Chi tiêu theo tháng"
-            description="6 tháng gần nhất"
+            description={`${months ?? 3} tháng gần nhất`}
           />
         </div>
         <CategoryBreakdown query={byCategory} description="Tỷ trọng chi tiêu tháng này" />

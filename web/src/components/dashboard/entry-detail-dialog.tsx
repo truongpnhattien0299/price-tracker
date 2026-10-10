@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 
 import { DeleteEntryDialog } from "@/components/dashboard/delete-entry-dialog"
 import { EntryFormDialog } from "@/components/dashboard/entry-form-dialog"
+import { LockedTile, UpgradeButton, useHistoryNotice } from "@/components/dashboard/pro-lock"
 import { ErrorState } from "@/components/shared/query-state"
 import { Photo } from "@/components/shared/photo"
 import { Badge } from "@/components/ui/badge"
@@ -23,7 +24,7 @@ import { useEntry } from "@/hooks/queries/use-entries"
 import { usePhotoUrl } from "@/hooks/queries/use-photo-url"
 import { HttpError } from "@/lib/api/client"
 import { formatDate, formatMoney } from "@/lib/format"
-import type { Entry } from "@/types/api"
+import type { Entry, EntryRow, LockedEntry } from "@/types/api"
 
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -96,6 +97,26 @@ function EntryDetail({ entry, onEdit, onDelete }: { entry: Entry; onEdit: () => 
   )
 }
 
+/** The API sent only the date (plans/07 E5): say why, offer the way back. */
+function LockedDetail({ entry }: { entry: LockedEntry }) {
+  const notice = useHistoryNotice()
+  return (
+    <>
+      <LockedTile className="aspect-video w-full rounded-lg" />
+      <DialogHeader>
+        <DialogTitle>Khoản chi đã khoá</DialogTitle>
+        <DialogDescription>
+          {formatDate(entry.purchasedAt, { timeStyle: "short" })} · {formatDate(entry.purchasedAt, { dateStyle: "full" })}
+        </DialogDescription>
+      </DialogHeader>
+      <p className="text-muted-foreground text-sm">{notice}</p>
+      <DialogFooter>
+        <UpgradeButton />
+      </DialogFooter>
+    </>
+  )
+}
+
 function DetailSkeleton() {
   return (
     <>
@@ -124,7 +145,7 @@ export function EntryDetailDialog({
   onNotFound,
 }: {
   entryId: string | null
-  initial?: Entry
+  initial?: EntryRow
   onOpenChange: (open: boolean) => void
   onDeleted?: () => void
   /** The id does not exist (or belongs to someone else). */
@@ -142,9 +163,12 @@ export function EntryDetailDialog({
     if (notFound && entryId) onNotFound?.()
   }, [notFound, entryId, onNotFound])
 
-  const entry = query.data
+  const row = query.data
+  const entry = row && !row.locked ? row : null
   let body: React.ReactNode
-  if (entry) {
+  if (row?.locked) {
+    body = <LockedDetail entry={row} />
+  } else if (entry) {
     body = <EntryDetail entry={entry} onEdit={() => setEditing(true)} onDelete={() => setDeleting(entry)} />
   } else if (query.isError && !notFound) {
     body = (
@@ -164,7 +188,7 @@ export function EntryDetailDialog({
             and on short screens the row would collapse under the text instead of scrolling. */}
         <DialogContent className="max-h-[90svh] auto-rows-max overflow-y-auto sm:max-w-md">{body}</DialogContent>
       </Dialog>
-      <EntryFormDialog open={editing} entry={entry ?? null} onOpenChange={setEditing} />
+      <EntryFormDialog open={editing} entry={entry} onOpenChange={setEditing} />
       <DeleteEntryDialog
         entry={deleting}
         onOpenChange={(open) => !open && setDeleting(null)}

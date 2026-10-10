@@ -19,15 +19,15 @@ type Feature = { label: string; soon?: boolean }
 const freeFeatures: Feature[] = [
   { label: "Chụp, nhập giá, ghi vị trí" },
   { label: `Tối đa ${freeLimits.entriesPerMonth} khoản chi / tháng` },
-  { label: `Xem rõ ${freeLimits.historyMonths} tháng gần nhất, cũ hơn làm mờ (không xoá)` },
-  { label: "Báo cáo tháng hiện tại theo danh mục" },
+  { label: `Xem ${freeLimits.historyMonths} tháng gần nhất, cũ hơn tạm khoá (không xoá)` },
+  { label: `Báo cáo trong ${freeLimits.historyMonths} tháng gần nhất` },
   { label: "Dùng trên điện thoại và web" },
 ]
 
 const proFeatures: Feature[] = [
   { label: "Không giới hạn khoản chi" },
   { label: "Toàn bộ lịch sử, mở khoá ngay khi nâng cấp" },
-  { label: "Báo cáo theo năm, so sánh nhiều tháng" },
+  { label: "Báo cáo theo năm, mọi khoảng thời gian" },
   { label: "Tự đọc giá và tên từ ảnh", soon: true },
   { label: "Ngân sách và cảnh báo vượt mức", soon: true },
   { label: "Xuất CSV / PDF", soon: true },

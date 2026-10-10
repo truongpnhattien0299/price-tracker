@@ -4,6 +4,7 @@ import type { EntryQuery, GroupBy, ReportRange } from "@/types/api"
 // `reports.all`, `["calendar"]`) exist so mutations can invalidate a whole family.
 export const qk = {
   me: ["me"] as const,
+  entitlement: ["entitlement"] as const,
   categories: ["categories"] as const,
   entries: {
     all: ["entries"] as const,

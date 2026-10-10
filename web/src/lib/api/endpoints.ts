@@ -2,9 +2,10 @@ import type {
   CalendarDay,
   Category,
   CategoryBreakdown,
-  Entry,
+  Entitlement,
   EntryInput,
   EntryQuery,
+  EntryRow,
   GroupBy,
   Paginated,
   ReportRange,
@@ -30,17 +31,22 @@ export const authApi = {
   me: () => apiFetch<{ user: User }>("/auth/me"),
 }
 
+export const entitlementApi = {
+  get: () => apiFetch<Entitlement>("/me/entitlement"),
+}
+
 export const categoriesApi = {
   list: () => apiFetch<Category[]>("/categories"),
 }
 
 export const entriesApi = {
-  list: (query: EntryQuery = {}) => apiFetch<Paginated<Entry>>("/entries", { query }),
-  get: (id: string) => apiFetch<Entry>(`/entries/${id}`),
+  // Reads (and writes that land outside a Free user's window) may come back locked.
+  list: (query: EntryQuery = {}) => apiFetch<Paginated<EntryRow>>("/entries", { query }),
+  get: (id: string) => apiFetch<EntryRow>(`/entries/${id}`),
   calendar: (month: string, tz?: string) =>
     apiFetch<CalendarDay[]>("/entries/calendar", { query: { month, tz } }),
-  create: (body: EntryInput) => apiFetch<Entry>("/entries", { method: "POST", body }),
-  update: (id: string, body: EntryInput) => apiFetch<Entry>(`/entries/${id}`, { method: "PATCH", body }),
+  create: (body: EntryInput) => apiFetch<EntryRow>("/entries", { method: "POST", body }),
+  update: (id: string, body: EntryInput) => apiFetch<EntryRow>(`/entries/${id}`, { method: "PATCH", body }),
   remove: (id: string) => apiFetch<void>(`/entries/${id}`, { method: "DELETE" }),
 }
 

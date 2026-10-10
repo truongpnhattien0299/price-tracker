@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 
 import { NavUser } from "@/components/dashboard/nav-user"
+import { PlanCard } from "@/components/dashboard/plan-card"
 import { Logo } from "@/components/shared/logo"
 import {
   Sidebar,
@@ -52,6 +53,7 @@ export function AppSidebar() {
         <NavGroup items={dashboardSecondaryNav} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
+        <PlanCard />
         <NavUser />
       </SidebarFooter>
       <SidebarRail />

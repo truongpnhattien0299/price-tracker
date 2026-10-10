@@ -27,7 +27,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { useCategories } from "@/hooks/queries/use-categories"
 import { useEntries } from "@/hooks/queries/use-entries"
 import { dayKeysToRange, fromDayKey, toDayKey } from "@/lib/date-range"
-import type { Entry, EntryQuery } from "@/types/api"
+import type { Entry, EntryQuery, EntryRow } from "@/types/api"
 
 const PAGE_SIZE = 20
 const ALL_CATEGORIES = "all"
@@ -129,7 +129,7 @@ export function EntriesView() {
   // `null` = closed, `"new"` = create, an Entry = edit that row.
   const [form, setForm] = useState<Entry | "new" | null>(null)
   // The clicked row seeds the detail dialog so it opens without a fetch.
-  const [opened, setOpened] = useState<Entry>()
+  const [opened, setOpened] = useState<EntryRow>()
 
   const actions = useMemo<EntryActions>(
     () => ({

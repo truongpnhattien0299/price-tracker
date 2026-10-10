@@ -26,3 +26,8 @@ export function initials(name: string) {
     .slice(0, 2)
     .toUpperCase()
 }
+
+/** Whole days left until `iso`, rounded up: 1 means "expires within a day". */
+export function daysUntil(iso: string, now = Date.now()) {
+  return Math.max(0, Math.ceil((new Date(iso).getTime() - now) / (24 * 60 * 60 * 1000)))
+}

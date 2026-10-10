@@ -1,5 +1,5 @@
 import { loginUrl } from "@/lib/auth/redirect"
-import type { ApiError } from "@/types/api"
+import type { ApiError, PaywallCode } from "@/types/api"
 
 export class HttpError extends Error {
   constructor(
@@ -9,6 +9,11 @@ export class HttpError extends Error {
     const msg = body?.message
     super(Array.isArray(msg) ? msg.join(", ") : (msg ?? `HTTP ${status}`))
   }
+}
+
+/** A 402 from the entitlement checks; `code` says which limit (plans/07). */
+export function paywallCode(error: unknown): PaywallCode | null {
+  return error instanceof HttpError && error.status === 402 ? (error.body?.code ?? null) : null
 }
 
 type Query = Record<string, string | number | undefined | null>

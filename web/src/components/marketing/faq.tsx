@@ -9,7 +9,7 @@ const faqs = [
   },
   {
     q: "Hết thời gian dùng thử thì dữ liệu có mất không?",
-    a: `Không bao giờ xoá. Gói Free xem rõ ${freeLimits.historyMonths} tháng gần nhất, khoản chi cũ hơn chỉ bị làm mờ và mở lại ngay khi nâng Pro.`,
+    a: `Không bao giờ xoá. Gói Free xem rõ ${freeLimits.historyMonths} tháng gần nhất, khoản chi cũ hơn chỉ tạm khoá và mở lại ngay khi nâng Pro.`,
   },
   {
     q: "Ảnh của tôi có ai xem được không?",

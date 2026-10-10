@@ -20,10 +20,11 @@ export function useCategoryBreakdown(range: ReportRange) {
   })
 }
 
-export function useTimeSeries(groupBy: GroupBy, range: ReportRange) {
+export function useTimeSeries(groupBy: GroupBy, range: ReportRange, { enabled = true } = {}) {
   return useQuery({
     queryKey: qk.reports.timeSeries(groupBy, range),
     queryFn: () => reportsApi.timeSeries(groupBy, range),
+    enabled,
   })
 }
 

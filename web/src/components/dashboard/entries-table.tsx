@@ -1,6 +1,6 @@
 "use client"
 
-import { EllipsisIcon, PencilIcon, Trash2Icon } from "lucide-react"
+import { EllipsisIcon, LockIcon, PencilIcon, Trash2Icon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -24,7 +24,7 @@ import {
 import { useCategoryMap } from "@/hooks/queries/use-categories"
 import { formatDate, formatMoney } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import type { Entry } from "@/types/api"
+import type { Entry, EntryRow, LockedEntry } from "@/types/api"
 
 function Head({ withActions }: { withActions?: boolean }) {
   return (
@@ -46,7 +46,8 @@ function Head({ withActions }: { withActions?: boolean }) {
 }
 
 export type EntryActions = {
-  onOpen: (entry: Entry) => void
+  /** Locked rows open too: the detail dialog explains the lock. */
+  onOpen: (entry: EntryRow) => void
   onEdit: (entry: Entry) => void
   onDelete: (entry: Entry) => void
 }
@@ -78,12 +79,45 @@ function RowMenu({ entry, actions }: { entry: Entry; actions: EntryActions }) {
   )
 }
 
+/** Outside a Free user's history window: only the date is known (plans/07 E5). */
+function LockedRow({ entry, actions }: { entry: LockedEntry; actions?: EntryActions }) {
+  const label = (
+    <span className="text-muted-foreground inline-flex items-center gap-1.5">
+      <LockIcon className="size-3.5" />
+      Đã khoá
+    </span>
+  )
+  return (
+    <TableRow>
+      <TableCell>
+        {actions ? (
+          <button
+            type="button"
+            onClick={() => actions.onOpen(entry)}
+            className="focus-visible:ring-ring/50 rounded-sm text-left underline-offset-4 outline-none hover:underline focus-visible:ring-[3px]"
+          >
+            {label}
+          </button>
+        ) : (
+          label
+        )}
+        <div className="text-muted-foreground text-xs sm:hidden">{formatDate(entry.purchasedAt)}</div>
+      </TableCell>
+      <TableCell className="text-muted-foreground hidden sm:table-cell">—</TableCell>
+      <TableCell className="text-muted-foreground hidden md:table-cell">—</TableCell>
+      <TableCell className="hidden sm:table-cell">{formatDate(entry.purchasedAt)}</TableCell>
+      <TableCell className="text-muted-foreground text-right">—</TableCell>
+      {actions && <TableCell />}
+    </TableRow>
+  )
+}
+
 export function EntriesTable({
   entries,
   actions,
   stale,
 }: {
-  entries: Entry[]
+  entries: EntryRow[]
   /** Clickable names + a ⋯ menu per row. Omitted for the read-only overview list. */
   actions?: EntryActions
   /** Previous page still shown while the next one loads. */
@@ -97,6 +131,7 @@ export function EntriesTable({
       <Head withActions={!!actions} />
       <TableBody>
         {entries.map((e) => {
+          if (e.locked) return <LockedRow key={e.id} entry={e} actions={actions} />
           const category = e.categoryId ? categories.get(e.categoryId) : undefined
           return (
             <TableRow key={e.id}>

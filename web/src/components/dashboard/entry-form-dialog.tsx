@@ -1,11 +1,13 @@
 "use client"
 
-import { CircleAlertIcon, ImagePlusIcon, Trash2Icon } from "lucide-react"
+import { CircleAlertIcon, ImagePlusIcon, LockIcon, Trash2Icon } from "lucide-react"
+import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 
+import { UPGRADE_HREF } from "@/components/dashboard/pro-lock"
 import { Photo } from "@/components/shared/photo"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -30,13 +32,14 @@ import {
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import { useCategories } from "@/hooks/queries/use-categories"
+import { useEntitlement } from "@/hooks/queries/use-entitlement"
 import { useCreateEntry, useUpdateEntry } from "@/hooks/queries/use-entries"
 import { usePhotoUrl } from "@/hooks/queries/use-photo-url"
 import { UploadError, useUploadPhoto } from "@/hooks/queries/use-upload-photo"
 import { HttpError } from "@/lib/api/client"
 import { fromVnInput, toVnInput } from "@/lib/date-range"
 import { ACCEPTED_IMAGE_TYPES, MAX_IMAGE_BYTES } from "@/lib/image"
-import type { Entry, EntryInput } from "@/types/api"
+import type { Entry, EntryInput, EntryRow } from "@/types/api"
 
 const NO_CATEGORY = "none"
 const DECIMAL_PRICE = /^\d{0,10}(\.\d{0,2})?$/
@@ -114,6 +117,10 @@ function toMessage(err: unknown, stage: "photo" | "save") {
         return `Dữ liệu chưa hợp lệ: ${err.message}`
       case 403:
         return "Không có quyền dùng ảnh này."
+      case 402:
+        return err.body?.code === "ENTRY_LIMIT"
+          ? "Gói Free đã đủ số khoản chi của tháng này. Nâng cấp Pro để ghi tiếp."
+          : "Khoản chi này nằm ngoài khoảng lịch sử của gói Free nên không sửa được."
       case 404:
         return "Khoản chi này không còn tồn tại."
       case 429:
@@ -247,12 +254,16 @@ function EntryForm({
 }: {
   entry: Entry | null
   onBusyChange: (busy: boolean) => void
-  onDone: (saved: Entry) => void
+  onDone: (saved: EntryRow) => void
 }) {
   const categories = useCategories()
   const upload = useUploadPhoto()
   const create = useCreateEntry()
   const update = useUpdateEntry()
+  const entitlement = useEntitlement()
+  // Free plan out of entries this month (plans/07 E3). The server still answers 402 if this is stale.
+  const limits = entitlement.data?.limits
+  const atCap = !entry && !!limits && entitlement.data!.usage.entriesThisMonth >= limits.entriesPerMonth
 
   const [values, setValues] = useState(() => initialValues(entry))
   const [photo, setPhoto] = useState<PhotoState>(() => (entry?.photoKey ? { kind: "keep" } : { kind: "none" }))
@@ -323,6 +334,21 @@ function EntryForm({
   return (
     <form onSubmit={onSubmit} noValidate>
       <FieldGroup>
+        {atCap && limits && (
+          <Alert>
+            <LockIcon />
+            <AlertTitle>Đã dùng hết {limits.entriesPerMonth} khoản chi của tháng này</AlertTitle>
+            <AlertDescription>
+              <p>
+                Gói Free tạm dừng ghi mới tới đầu tháng sau.{" "}
+                <Link href={UPGRADE_HREF} className="text-foreground underline underline-offset-4">
+                  Xem gói Pro
+                </Link>{" "}
+                để ghi không giới hạn.
+              </p>
+            </AlertDescription>
+          </Alert>
+        )}
         {formError && (
           <Alert variant="destructive">
             <CircleAlertIcon />
@@ -446,7 +472,7 @@ function EntryForm({
               Huỷ
             </Button>
           </DialogClose>
-          <Button type="submit" disabled={busy}>
+          <Button type="submit" disabled={busy || atCap}>
             {busy && <Spinner data-icon="inline-start" />}
             {upload.isPending ? "Đang tải ảnh…" : busy ? "Đang lưu…" : entry ? "Lưu" : "Thêm"}
           </Button>
@@ -466,7 +492,7 @@ export function EntryFormDialog({
   open: boolean
   entry: Entry | null
   onOpenChange: (open: boolean) => void
-  onSaved?: (entry: Entry) => void
+  onSaved?: (entry: EntryRow) => void
 }) {
   const [busy, setBusy] = useState(false)
   // A fresh form per opening; keep the last entry rendered while the dialog animates out.

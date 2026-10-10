@@ -10,7 +10,7 @@ import {
 
 import { entriesApi } from "@/lib/api/endpoints"
 import { qk } from "@/lib/query/keys"
-import type { Entry, EntryInput, EntryQuery } from "@/types/api"
+import type { EntryInput, EntryQuery, EntryRow } from "@/types/api"
 
 export function useEntries(query: EntryQuery) {
   return useQuery({
@@ -26,7 +26,7 @@ export function useEntries(query: EntryQuery) {
  * opening it. `enabled: false` keeps the cached data for a closing dialog
  * without refetching it.
  */
-export function useEntry(id: string | null, initial?: Entry, { enabled = true } = {}) {
+export function useEntry(id: string | null, initial?: EntryRow, { enabled = true } = {}) {
   return useQuery({
     queryKey: qk.entries.detail(id ?? ""),
     queryFn: () => entriesApi.get(id!),
@@ -49,6 +49,8 @@ function invalidateEntryData(queryClient: QueryClient, writtenId: string) {
     }),
     queryClient.invalidateQueries({ queryKey: qk.calendar.all }),
     queryClient.invalidateQueries({ queryKey: qk.reports.all }),
+    // Creates and deletes move the Free plan's monthly count.
+    queryClient.invalidateQueries({ queryKey: qk.entitlement }),
   ])
 }
 

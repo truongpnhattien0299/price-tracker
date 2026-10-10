@@ -1,14 +1,17 @@
 "use client"
 
 import { LockIcon } from "lucide-react"
+import Link from "next/link"
 import { useMemo, useState } from "react"
 
 import { CategoryBreakdown } from "@/components/dashboard/category-breakdown"
+import { UPGRADE_HREF } from "@/components/dashboard/pro-lock"
 import { DateRangePicker, type DateRange } from "@/components/dashboard/date-range-picker"
 import { SpendingChart } from "@/components/dashboard/spending-chart"
 import { StatCards } from "@/components/dashboard/stat-cards"
 import { TopStores } from "@/components/dashboard/top-stores"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Skeleton } from "@/components/ui/skeleton"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import {
   useCategoryBreakdown,
@@ -16,8 +19,10 @@ import {
   useTimeSeries,
   useTopStores,
 } from "@/hooks/queries/use-reports"
-import { HttpError } from "@/lib/api/client"
-import { dayKeysToRange, toDayKey } from "@/lib/date-range"
+import { useEntitlement } from "@/hooks/queries/use-entitlement"
+import { paywallCode } from "@/lib/api/client"
+import { dayKeysToRange, fromDayKey, toDayKey, todayKey } from "@/lib/date-range"
+import { formatDate } from "@/lib/format"
 import type { GroupBy, ReportRange } from "@/types/api"
 
 const GROUP_BY: { value: GroupBy; label: string }[] = [
@@ -26,25 +31,37 @@ const GROUP_BY: { value: GroupBy; label: string }[] = [
   { value: "year", label: "Năm" },
 ]
 
-function defaultRange(): DateRange {
+/** Six months back, but never before `minDay` (a Free user's history window). */
+function defaultRange(minDay: string | null): DateRange {
   const now = new Date()
-  return { from: new Date(now.getFullYear(), now.getMonth() - 5, 1), to: now }
-}
-
-/** 402/403 = the backend refused a Pro-only report (DESIGN.md §14), not a failure. */
-function isPaywalled(error: unknown) {
-  return error instanceof HttpError && (error.status === 402 || error.status === 403)
+  const from = new Date(now.getFullYear(), now.getMonth() - 5, 1)
+  return { from: minDay && toDayKey(from) < minDay ? fromDayKey(minDay) : from, to: now }
 }
 
 export function ReportsView() {
+  const entitlement = useEntitlement()
+  // The default range and the picker depend on the plan; don't fetch a range the API refuses.
+  if (entitlement.isPending) {
+    return (
+      <>
+        <Skeleton className="h-9 w-60" />
+        <Skeleton className="h-64 w-full" />
+      </>
+    )
+  }
+  const historyFrom = entitlement.data?.historyFrom ?? null
+  return <Reports minDay={historyFrom ? todayKey(new Date(historyFrom)) : null} />
+}
+
+function Reports({ minDay }: { minDay: string | null }) {
   const [groupBy, setGroupBy] = useState<GroupBy>("month")
-  const [picked, setPicked] = useState<DateRange | undefined>(defaultRange)
+  const [picked, setPicked] = useState<DateRange | undefined>(() => defaultRange(minDay))
 
   // A half-picked range (only `from`) reads as that single day.
   const range = useMemo(() => {
-    const from = picked?.from ?? defaultRange().from!
+    const from = picked?.from ?? defaultRange(minDay).from!
     return dayKeysToRange(toDayKey(from), toDayKey(picked?.to ?? from)) as Required<ReportRange>
-  }, [picked])
+  }, [picked, minDay])
 
   const summary = useReportSummary(range)
   const series = useTimeSeries(groupBy, range)
@@ -53,7 +70,17 @@ export function ReportsView() {
 
   return (
     <>
-      <DateRangePicker value={picked} onChange={setPicked} />
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+        <DateRangePicker value={picked} onChange={setPicked} minDate={minDay ? fromDayKey(minDay) : undefined} />
+        {minDay && (
+          <p className="text-muted-foreground text-sm">
+            Gói Free xem báo cáo từ {formatDate(minDay)}.{" "}
+            <Link href={UPGRADE_HREF} className="text-foreground underline underline-offset-4">
+              Xem gói Pro
+            </Link>
+          </p>
+        )}
+      </div>
       <StatCards query={summary} totalLabel="Tổng chi trong kỳ" />
       <SpendingChart
         query={series}
@@ -78,12 +105,18 @@ export function ReportsView() {
           </ToggleGroup>
         }
         notice={
-          isPaywalled(series.error) ? (
+          // The backend refused a Pro-only grouping (plans/07 E8): an upsell, not a failure.
+          paywallCode(series.error) === "PRO_ONLY" ? (
             <Alert>
               <LockIcon />
               <AlertTitle>Tính năng Pro</AlertTitle>
               <AlertDescription>
-                Nâng cấp lên Pro để xem báo cáo theo {GROUP_BY.find((g) => g.value === groupBy)?.label.toLowerCase()}.
+                <p>
+                  Báo cáo theo {GROUP_BY.find((g) => g.value === groupBy)?.label.toLowerCase()} dành cho gói Pro.{" "}
+                  <Link href={UPGRADE_HREF} className="text-foreground underline underline-offset-4">
+                    Xem gói Pro
+                  </Link>
+                </p>
               </AlertDescription>
             </Alert>
           ) : undefined

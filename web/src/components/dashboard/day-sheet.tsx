@@ -4,6 +4,7 @@ import { CalendarXIcon, ImageIcon } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import { EntryDetailDialog } from "@/components/dashboard/entry-detail-dialog"
+import { LockedTile } from "@/components/dashboard/pro-lock"
 import { EmptyState, ErrorState } from "@/components/shared/query-state"
 import { Photo } from "@/components/shared/photo"
 import {
@@ -18,19 +19,25 @@ import { useEntries } from "@/hooks/queries/use-entries"
 import { usePhotoUrls } from "@/hooks/queries/use-photo-url"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { dayKeysToRange, fromDayKey } from "@/lib/date-range"
-import type { Entry } from "@/types/api"
+import type { EntryRow } from "@/types/api"
 
 // Sized by the sheet (narrow on the right, wide from the bottom), not the viewport.
 const GRID = "grid grid-cols-3 gap-2 @lg:grid-cols-4"
 
-function EntryTile({ entry, url, failed, onOpen }: { entry: Entry; url?: string; failed: boolean; onOpen: () => void }) {
+function EntryTile({ entry, url, failed, onOpen }: { entry: EntryRow; url?: string; failed: boolean; onOpen: () => void }) {
+  const className =
+    "focus-visible:ring-ring/50 flex w-full flex-col gap-1 rounded-md text-left outline-none focus-visible:ring-[3px]"
+  if (entry.locked) {
+    return (
+      <button type="button" onClick={onOpen} className={className}>
+        <LockedTile className="aspect-square w-full rounded-md" />
+        <span className="text-muted-foreground truncate text-xs">Đã khoá</span>
+      </button>
+    )
+  }
   const name = entry.productName ?? "Khoản chi"
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="focus-visible:ring-ring/50 flex w-full flex-col gap-1 rounded-md text-left outline-none focus-visible:ring-[3px]"
-    >
+    <button type="button" onClick={onOpen} className={className}>
       {entry.photoKey ? (
         <Photo src={url} failed={failed} alt={name} className="aspect-square w-full rounded-md" />
       ) : (
@@ -52,9 +59,9 @@ function DayBody({ day, onClose }: { day: string; onClose: () => void }) {
     () => (entries.isPlaceholderData ? undefined : entries.data && [...entries.data.data].reverse()),
     [entries.isPlaceholderData, entries.data],
   )
-  const keys = useMemo(() => list?.map((e) => e.photoKey) ?? [], [list])
+  const keys = useMemo(() => list?.map((e) => (e.locked ? null : e.photoKey)) ?? [], [list])
   const urls = usePhotoUrls(keys)
-  const [selected, setSelected] = useState<Entry | null>(null)
+  const [selected, setSelected] = useState<EntryRow | null>(null)
 
   const title = new Intl.DateTimeFormat("vi-VN", { weekday: "long", day: "numeric", month: "long" }).format(
     fromDayKey(day),
@@ -80,7 +87,7 @@ function DayBody({ day, onClose }: { day: string; onClose: () => void }) {
           <li key={e.id}>
             <EntryTile
               entry={e}
-              url={e.photoKey ? urls.data?.[e.photoKey] : undefined}
+              url={!e.locked && e.photoKey ? urls.data?.[e.photoKey] : undefined}
               failed={urls.isError}
               onOpen={() => setSelected(e)}
             />

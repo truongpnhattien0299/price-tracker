@@ -1,10 +1,11 @@
 "use client"
 
-import { ChevronLeftIcon, ChevronRightIcon, ImageIcon } from "lucide-react"
+import { ChevronLeftIcon, ChevronRightIcon, ImageIcon, LockIcon } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { useCallback, useMemo } from "react"
+import { useCallback, useMemo, useState } from "react"
 
 import { DaySheet } from "@/components/dashboard/day-sheet"
+import { ProLockDialog } from "@/components/dashboard/pro-lock"
 import { ErrorState } from "@/components/shared/query-state"
 import { Photo } from "@/components/shared/photo"
 import { Button } from "@/components/ui/button"
@@ -12,8 +13,10 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { useCalendar } from "@/hooks/queries/use-calendar"
+import { useEntitlement } from "@/hooks/queries/use-entitlement"
 import { usePhotoUrls } from "@/hooks/queries/use-photo-url"
 import { currentMonthKey, monthGrid, shiftMonth, todayKey } from "@/lib/date-range"
+import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { CalendarDay } from "@/types/api"
 
@@ -60,9 +63,9 @@ function monthTitle(month: string) {
   return `Tháng ${m}, ${y}`
 }
 
-function dayLabel(key: string, count: number) {
+function dayLabel(key: string, count: number, locked?: boolean) {
   const [, m, d] = key.split("-").map(Number)
-  return `${d} tháng ${m}, ${count} khoản chi`
+  return `${d} tháng ${m}, ${count} khoản chi${locked ? ", đã khoá" : ""}`
 }
 
 function DayCell({
@@ -101,13 +104,16 @@ function DayCell({
     <button
       type="button"
       onClick={onOpen}
-      aria-label={dayLabel(dayKey, info.count)}
+      aria-label={dayLabel(dayKey, info.count, info.locked)}
       className={cn(
         base,
         "bg-muted group focus-visible:ring-ring/50 outline-none focus-visible:ring-[3px]",
       )}
     >
-      {info.coverPhotoKey ? (
+      {info.locked ? (
+        // Outside the Free window: the API sends no cover (plans/07 E6).
+        <LockIcon className="text-muted-foreground absolute inset-0 m-auto size-4 sm:size-5" />
+      ) : info.coverPhotoKey ? (
         <Photo
           src={url}
           failed={failed}
@@ -138,6 +144,9 @@ function DayCell({
 export function CalendarView() {
   const { month, day, grid, current, today, set } = useCalendarParams()
   const calendar = useCalendar(month)
+  const historyFrom = useEntitlement().data?.historyFrom
+  // The day stays set while the dialog animates out, so its title doesn't flicker.
+  const [lock, setLock] = useState({ day: "", open: false })
   // A placeholder belongs to the previous month; its dates match no cell anyway.
   const days = calendar.isPlaceholderData ? undefined : calendar.data
   const byDate = useMemo(() => new Map(days?.map((d) => [d.date, d])), [days])
@@ -145,6 +154,9 @@ export function CalendarView() {
   const urls = usePhotoUrls(coverKeys)
 
   const entryCount = days?.reduce((n, d) => n + d.count, 0) ?? 0
+  // Only worth saying in a month that actually has locked days.
+  const lockNote =
+    historyFrom && days?.some((d) => d.locked) ? ` Ngày trước ${formatDate(historyFrom)} cần gói Pro để xem.` : ""
 
   return (
     <>
@@ -159,7 +171,7 @@ export function CalendarView() {
             {!days
               ? "Đang tải…"
               : entryCount > 0
-                ? `${entryCount} khoản chi trong ${days.length} ngày`
+                ? `${entryCount} khoản chi trong ${days.length} ngày.${lockNote}`
                 : "Chưa có khoản chi nào trong tháng này. Chụp ảnh bằng app trên điện thoại để bắt đầu."}
           </CardDescription>
           <CardAction className="flex items-center gap-1">
@@ -210,7 +222,7 @@ export function CalendarView() {
                     failed={urls.isError}
                     isToday={key === today}
                     isFuture={key > today}
-                    onOpen={() => set({ day: key })}
+                    onOpen={() => (info?.locked ? setLock({ day: key, open: true }) : set({ day: key }))}
                   />
                 )
               })}
@@ -220,6 +232,11 @@ export function CalendarView() {
       </Card>
 
       <DaySheet day={day} onOpenChange={(open) => !open && set({ day: null })} />
+      <ProLockDialog
+        open={lock.open}
+        onOpenChange={(open) => setLock((l) => ({ ...l, open }))}
+        title={lock.day ? `Ngày ${formatDate(lock.day)} đã khoá` : "Ngày đã khoá"}
+      />
     </>
   )
 }
