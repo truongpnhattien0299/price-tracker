@@ -29,6 +29,9 @@ services:
         value: 22.13.0
       - key: TRUST_PROXY
         value: "1"
+      # Copy the same value into the Vercel project (web/.env.example)
+      - key: BFF_SECRET
+        generateValue: true
 
       # Neon direct (non-pooled) URL + ?sslmode=require&connect_timeout=15
       - key: DATABASE_URL

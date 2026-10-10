@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import {
   backendFetch,
   backendUnreachable,
+  clientIp,
   crossOriginRejected,
   errorResponse,
   refreshTokens,
@@ -32,12 +33,14 @@ async function handler(req: NextRequest, { params }: Context) {
   const target = "/" + path.map(encodeURIComponent).join("/") + req.nextUrl.search
 
   const body = req.method === "GET" || req.method === "HEAD" ? undefined : await req.text()
+  const ip = clientIp(req)
   const call = (accessToken?: string) =>
     backendFetch(target, {
       method: req.method,
       body: body || undefined,
       contentType: req.headers.get("content-type"),
       accessToken,
+      clientIp: ip,
     })
 
   const refreshToken = req.cookies.get(REFRESH_COOKIE)?.value
@@ -48,13 +51,13 @@ async function handler(req: NextRequest, { params }: Context) {
   let res: Response
   try {
     if (!accessToken && refreshToken) {
-      rotated = await refreshTokens(refreshToken)
+      rotated = await refreshTokens(refreshToken, ip)
       refreshed = true
       accessToken = rotated?.accessToken
     }
     res = await call(accessToken)
     if (res.status === 401 && refreshToken && !refreshed) {
-      rotated = await refreshTokens(refreshToken)
+      rotated = await refreshTokens(refreshToken, ip)
       if (rotated) res = await call(rotated.accessToken)
     }
   } catch {

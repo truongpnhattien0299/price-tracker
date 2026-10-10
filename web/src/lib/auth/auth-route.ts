@@ -2,7 +2,12 @@ import "server-only"
 
 import { NextResponse, type NextRequest } from "next/server"
 
-import { backendFetch, backendUnreachable, crossOriginRejected } from "@/lib/api/backend"
+import {
+  backendFetch,
+  backendUnreachable,
+  clientIp,
+  crossOriginRejected,
+} from "@/lib/api/backend"
 import type { AuthResponse, User } from "@/types/api"
 
 import { isSameOrigin } from "./origin"
@@ -17,7 +22,11 @@ export async function forwardAuth(req: NextRequest, path: "/auth/login" | "/auth
 
   let res: Response
   try {
-    res = await backendFetch(path, { method: "POST", body: await req.text() })
+    res = await backendFetch(path, {
+      method: "POST",
+      body: await req.text(),
+      clientIp: clientIp(req),
+    })
   } catch {
     return backendUnreachable()
   }

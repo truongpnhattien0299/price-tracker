@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { ClientIpThrottlerGuard } from './common/client-ip-throttler.guard';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
 import { UsersModule } from './users/users.module';
@@ -15,7 +16,8 @@ import { EntitlementModule } from './entitlement/entitlement.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    // Baseline rate limit (DESIGN.md §12) — 60 requests / minute per IP.
+    // Baseline rate limit (DESIGN.md §12) — 60 requests / minute per IP
+    // (the end user's IP for BFF traffic, see ClientIpThrottlerGuard).
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
     PrismaModule,
     HealthModule,
@@ -27,6 +29,6 @@ import { EntitlementModule } from './entitlement/entitlement.module';
     ReportsModule,
     EntitlementModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [{ provide: APP_GUARD, useClass: ClientIpThrottlerGuard }],
 })
 export class AppModule {}
