@@ -4,12 +4,14 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  HttpCode,
   Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
 import { UploadsService } from './uploads.service';
 import { PresignDto } from './dto/presign.dto';
+import { PhotoUrlsDto } from './dto/photo-urls.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthUser } from '../auth/strategies/jwt.strategy';
@@ -27,10 +29,25 @@ export class UploadsController {
   @Get('photo-url')
   photoUrl(@CurrentUser() user: AuthUser, @Query('key') key?: string) {
     if (!key) throw new BadRequestException('key is required');
-    // Only allow access to the caller's own objects.
-    if (!key.startsWith(`entries/${user.userId}/`)) {
+    this.assertOwnKey(user.userId, key);
+    return this.uploads.presignGet(key);
+  }
+
+  // Batch variant of photo-url. POST because a month of keys can be long.
+  @Post('photo-urls')
+  @HttpCode(200)
+  async photoUrls(@CurrentUser() user: AuthUser, @Body() dto: PhotoUrlsDto) {
+    for (const key of dto.keys) this.assertOwnKey(user.userId, key);
+    const urls = await Promise.all(
+      dto.keys.map(async (key) => [key, (await this.uploads.presignGet(key)).url] as const),
+    );
+    return { urls: Object.fromEntries(urls) };
+  }
+
+  // Only allow access to the caller's own objects.
+  private assertOwnKey(userId: string, key: string) {
+    if (!key.startsWith(`entries/${userId}/`)) {
       throw new ForbiddenException('Not allowed to access this object');
     }
-    return this.uploads.presignGet(key);
   }
 }

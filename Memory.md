@@ -56,6 +56,7 @@ Camera-first **image expense diary** (Locket-style UX): open app → camera → 
 - **Phase 3 (Uploads/S3) — DONE.** [uploads.service.ts](backend/src/uploads/uploads.service.ts) — `@aws-sdk/client-s3` + presigner.
   - `POST /uploads/presign {contentType,ext}` → `{uploadUrl, photoKey}` (presigned PUT, 5-min). photoKey = `entries/<userId>/<uuid>.<ext>`. contentType/ext whitelisted (jpeg/png/webp) → 400 otherwise.
   - `GET /uploads/photo-url?key=` → `{url}` (presigned GET, 5-min). Rejects keys not prefixed `entries/<userId>/` → 403 (ownership). Free-tier lock (DESIGN §14.6) deferred to Phase 10.
+  - `POST /uploads/photo-urls` `{keys[]}` (1–100, unique) → `{urls:{[key]:url}}` — batch of the above, same 403 rule for any foreign key. Added for the web calendar (plans/03) because the 60 req/min throttle is per IP and the web BFF puts all users on one IP. Mobile calendar should use it too.
   - S3 client config-driven: `AWS_S3_ENDPOINT`+`AWS_S3_FORCE_PATH_STYLE` for MinIO local dev; omit both in prod → SDK default creds chain (EC2 IAM role). `deleteObject()` exported.
   - Entry DELETE now best-effort deletes the S3 object (Phase 2 TODO resolved).
   - **Local dev S3 = MinIO** in docker-compose (`minio` :9000 API / :9001 console, `minio-init` creates bucket `price-tracker-photos`). `.env` points AWS_* at minioadmin/minioadmin. Start: `docker compose up -d minio minio-init`.

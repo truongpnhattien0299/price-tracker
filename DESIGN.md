@@ -191,6 +191,7 @@ Base URL: `/api/v1`. Tất cả endpoint (trừ auth) yêu cầu header `Authori
 |---|---|---|
 | POST | `/uploads/presign` | Body `{ contentType, ext }` → `{ uploadUrl, photoKey }`. App `PUT` ảnh thẳng lên `uploadUrl`, sau đó gửi `photoKey` khi tạo entry. |
 | GET | `/uploads/photo-url?key=` | Cấp **presigned GET URL** (hết hạn ngắn) để xem ảnh. **Từ chối** nếu ảnh thuộc entry bị khóa ở gói Free (mục 14.6). |
+| POST | `/uploads/photo-urls` | Batch của `photo-url`: body `{ keys: string[] }` (1–100) → `{ urls: { [key]: url } }`. Dùng cho lưới lịch để 1 tháng chỉ tốn 1 request (rate limit theo IP). |
 
 ### 5.4. Reports (tính năng trọng tâm)
 
