@@ -1,7 +1,10 @@
+import { readFile } from "node:fs/promises"
+import { join } from "node:path"
+
 import { ImageResponse } from "next/og"
 
 import { siteConfig } from "@/config/site"
-import { brandHex, CameraMark } from "@/lib/brand"
+import { brandHex } from "@/lib/brand"
 
 export const alt = siteConfig.name
 export const size = { width: 1200, height: 630 }
@@ -20,14 +23,16 @@ const days: (number | null)[] = [
   0, 1, null, 2, null, null, null,
 ]
 
-export default function OpengraphImage() {
+export default async function OpengraphImage() {
+  // next/og cannot fetch a relative URL, so the app icon is inlined as a data URL.
+  const icon = await readFile(join(process.cwd(), "public/icons/icon-512.png"))
+  const iconSrc = `data:image/png;base64,${icon.toString("base64")}`
+
   return new ImageResponse(
     (
       <div style={{ display: "flex", width: "100%", height: "100%", background: brandHex.authPanel, padding: 72, alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
-          <div style={{ display: "flex", width: 112, height: 112, borderRadius: 28, background: brandHex.primary, alignItems: "center", justifyContent: "center" }}>
-            <CameraMark size={64} color={brandHex.primaryForeground} />
-          </div>
+          <img src={iconSrc} width={144} height={144} alt="" />
           <div style={{ fontSize: 84, fontWeight: 700, color: brandHex.foreground, letterSpacing: -2 }}>{siteConfig.name}</div>
         </div>
 
