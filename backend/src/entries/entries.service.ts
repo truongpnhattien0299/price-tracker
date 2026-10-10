@@ -21,6 +21,7 @@ export class EntriesService {
 
   async create(userId: string, dto: CreateEntryDto) {
     await this.assertCategory(dto.categoryId);
+    if (dto.photoKey) this.uploads.assertOwnKey(userId, dto.photoKey);
     return this.prisma.entry.create({
       data: {
         userId,
@@ -89,8 +90,16 @@ export class EntriesService {
   }
 
   async update(userId: string, id: string, dto: UpdateEntryDto) {
-    await this.findOne(userId, id); // ownership check (404 if not owner)
+    const current = await this.findOne(userId, id); // ownership check (404 if not owner)
+    // @IsOptional lets null through; these columns are NOT NULL, so null would
+    // otherwise surface as a 500 from Decimal/Prisma. Nullable fields take null to clear.
+    for (const field of ['price', 'currency', 'purchasedAt'] as const) {
+      if (dto[field] === null) {
+        throw new BadRequestException(`${field} cannot be null`);
+      }
+    }
     if (dto.categoryId !== undefined) await this.assertCategory(dto.categoryId);
+    if (dto.photoKey) this.uploads.assertOwnKey(userId, dto.photoKey);
 
     const data: Prisma.EntryUpdateInput = {};
     if (dto.productName !== undefined) data.productName = dto.productName;
@@ -112,21 +121,28 @@ export class EntriesService {
         ? { connect: { id: dto.categoryId } }
         : { disconnect: true };
 
-    return this.prisma.entry.update({ where: { id }, data });
+    const updated = await this.prisma.entry.update({ where: { id }, data });
+    // Photo replaced or removed: the old object is no longer referenced.
+    if (current.photoKey && dto.photoKey !== undefined && dto.photoKey !== current.photoKey) {
+      await this.deletePhoto(current.photoKey);
+    }
+    return updated;
   }
 
   async remove(userId: string, id: string) {
     const entry = await this.findOne(userId, id); // ownership check
     await this.prisma.entry.delete({ where: { id } });
-    // Best-effort storage (R2) cleanup; don't fail the request if the object is gone.
-    if (entry.photoKey) {
-      try {
-        await this.uploads.deleteObject(entry.photoKey);
-      } catch {
-        /* ignore storage delete errors */
-      }
-    }
+    if (entry.photoKey) await this.deletePhoto(entry.photoKey);
     return { id, deleted: true };
+  }
+
+  // Best-effort storage (R2) cleanup; don't fail the request if the object is gone.
+  private async deletePhoto(key: string) {
+    try {
+      await this.uploads.deleteObject(key);
+    } catch {
+      /* ignore storage delete errors */
+    }
   }
 
   // Calendar grid for a month, grouped by the user's LOCAL day (DESIGN.md §4.2).

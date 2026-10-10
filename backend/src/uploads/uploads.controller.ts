@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Body,
   Controller,
-  ForbiddenException,
   Get,
   HttpCode,
   Post,
@@ -29,7 +28,7 @@ export class UploadsController {
   @Get('photo-url')
   photoUrl(@CurrentUser() user: AuthUser, @Query('key') key?: string) {
     if (!key) throw new BadRequestException('key is required');
-    this.assertOwnKey(user.userId, key);
+    this.uploads.assertOwnKey(user.userId, key);
     return this.uploads.presignGet(key);
   }
 
@@ -37,17 +36,11 @@ export class UploadsController {
   @Post('photo-urls')
   @HttpCode(200)
   async photoUrls(@CurrentUser() user: AuthUser, @Body() dto: PhotoUrlsDto) {
-    for (const key of dto.keys) this.assertOwnKey(user.userId, key);
+    for (const key of dto.keys) this.uploads.assertOwnKey(user.userId, key);
     const urls = await Promise.all(
       dto.keys.map(async (key) => [key, (await this.uploads.presignGet(key)).url] as const),
     );
     return { urls: Object.fromEntries(urls) };
   }
 
-  // Only allow access to the caller's own objects.
-  private assertOwnKey(userId: string, key: string) {
-    if (!key.startsWith(`entries/${userId}/`)) {
-      throw new ForbiddenException('Not allowed to access this object');
-    }
-  }
 }

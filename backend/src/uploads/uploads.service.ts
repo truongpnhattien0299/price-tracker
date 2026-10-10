@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   GetObjectCommand,
@@ -38,6 +38,14 @@ export class UploadsService {
       requestChecksumCalculation: 'WHEN_REQUIRED',
       responseChecksumValidation: 'WHEN_REQUIRED',
     });
+  }
+
+  // Only allow access to the caller's own objects — for reading photo URLs,
+  // and for attaching a key to an entry (deleting the entry deletes the object).
+  assertOwnKey(userId: string, key: string) {
+    if (!key.startsWith(`entries/${userId}/`)) {
+      throw new ForbiddenException('Not allowed to access this object');
+    }
   }
 
   // Presigned PUT — client uploads the image bytes straight to storage (R2).
