@@ -5,8 +5,9 @@
 export type Coords = { lat: number; lng: number }
 
 /** Where the form's coordinates came from; "saved" = already on the entry. */
-export type LocationSource = "exif" | "device" | "manual" | "saved"
-export type PickedLocation = Coords & { source: LocationSource }
+export type LocationSource = "exif" | "device" | "search" | "manual" | "saved"
+/** `accuracy` (metres) is known only for a device fix. */
+export type PickedLocation = Coords & { source: LocationSource; accuracy?: number }
 
 export type PhotoMeta = { gps: Coords | null; takenAt: string | null }
 
@@ -68,20 +69,54 @@ export function isFreshCapture(file: File, now = Date.now()) {
   return age >= -60_000 && age <= FRESH_MS
 }
 
+/** A device fix: `accuracy` is the 68 % radius in metres, as the browser reports it. */
+export type DeviceFix = Coords & { accuracy: number }
+
+// Good enough to stop early: a stall in a market, not just the market.
+const GOOD_ACCURACY_M = 20
+const LOCATE_TIMEOUT_MS = 15_000
+
 /**
- * The device's position, or null when it is unavailable: no permission, no
- * fix within 10 s, or an insecure origin (geolocation needs HTTPS or localhost
- * — a phone opening the dev server over http://<LAN IP> gets nothing).
+ * The device's best position within ~15 s, or null when there is none: no
+ * permission, no fix at all, or an insecure origin (geolocation needs HTTPS or
+ * localhost — a phone opening the dev server over http://<LAN IP> gets nothing).
+ *
+ * `watchPosition`, not `getCurrentPosition`: the first fix a phone hands out is
+ * usually a coarse Wi-Fi / cell guess (hundreds of metres) while the GPS chip is
+ * still warming up. Watching keeps the most accurate fix and stops as soon as
+ * one is within 20 m. `maximumAge: 0` refuses a cached position from elsewhere.
+ * `onFix` sees every improvement, so the UI can show the accuracy as it narrows.
  */
-export function getDevicePosition(): Promise<Coords | null> {
+export function getDevicePosition(onFix?: (fix: DeviceFix) => void): Promise<DeviceFix | null> {
   if (typeof window === "undefined" || !window.isSecureContext || !("geolocation" in navigator)) {
     return Promise.resolve(null)
   }
   return new Promise((resolve) => {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => resolve(validCoords(pos.coords.latitude, pos.coords.longitude)),
-      () => resolve(null),
-      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
+    let best: DeviceFix | null = null
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      navigator.geolocation.clearWatch(watchId)
+      clearTimeout(timer)
+      resolve(best)
+    }
+    const timer = setTimeout(finish, LOCATE_TIMEOUT_MS)
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const c = validCoords(pos.coords.latitude, pos.coords.longitude)
+        if (!c || done) return
+        const fix = { ...c, accuracy: pos.coords.accuracy }
+        if (best && fix.accuracy >= best.accuracy) return
+        best = fix
+        onFix?.(fix)
+        if (fix.accuracy <= GOOD_ACCURACY_M) finish()
+      },
+      (err) => {
+        // Denied is final; "unavailable" can still be followed by a fix, so keep waiting for the timer.
+        if (err.code === err.PERMISSION_DENIED) finish()
+      },
+      { enableHighAccuracy: true, maximumAge: 0 },
     )
   })
 }

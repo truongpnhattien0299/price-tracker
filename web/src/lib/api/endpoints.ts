@@ -12,6 +12,7 @@ import type {
   Paginated,
   ReportRange,
   ReportSummary,
+  PlaceSuggestion,
   ReverseGeocode,
   TimeSeriesPoint,
   TopStore,
@@ -54,10 +55,12 @@ export const entriesApi = {
   remove: (id: string) => apiFetch<void>(`/entries/${id}`, { method: "DELETE" }),
 }
 
-// BFF route (not the NestJS API): Nominatim behind one shared rate limit.
+// BFF routes (not the NestJS API): Nominatim behind one shared rate limit, Photon for search.
 export const geocodeApi = {
   reverse: (lat: number, lng: number) =>
     request<ReverseGeocode>("/api/geocode/reverse", { query: { lat, lng } }),
+  search: (q: string, near: { lat: number; lng: number } | null, signal?: AbortSignal) =>
+    request<PlaceSuggestion[]>("/api/geocode/search", { query: { q, lat: near?.lat, lng: near?.lng }, signal }),
 }
 
 export const uploadsApi = {

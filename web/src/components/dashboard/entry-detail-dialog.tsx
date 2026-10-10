@@ -1,6 +1,6 @@
 "use client"
 
-import { MapPinIcon, PencilIcon, Trash2Icon } from "lucide-react"
+import { MapPinIcon, PencilIcon, Trash2Icon, XIcon } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -37,6 +38,20 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
   )
 }
 
+/**
+ * Body + actions. Only the body scrolls, so the actions stay at the bottom.
+ * auto-rows-max: the photo clips its overflow, so as a grid item its min height
+ * is 0 and on short screens the row would collapse under the text instead of scrolling.
+ */
+function DetailLayout({ children, actions }: { children: React.ReactNode; actions?: React.ReactNode }) {
+  return (
+    <>
+      <div className="grid min-h-0 flex-1 auto-rows-max gap-4 overflow-y-auto overscroll-contain p-4">{children}</div>
+      {actions && <DialogFooter className="m-0 shrink-0 flex-row">{actions}</DialogFooter>}
+    </>
+  )
+}
+
 function EntryDetail({ entry, onEdit, onDelete }: { entry: Entry; onEdit: () => void; onDelete: () => void }) {
   const categories = useCategoryMap()
   const photo = usePhotoUrl(entry.photoKey)
@@ -46,7 +61,19 @@ function EntryDetail({ entry, onEdit, onDelete }: { entry: Entry; onEdit: () => 
   const onMap = usePathname() === "/dashboard/map"
 
   return (
-    <>
+    <DetailLayout
+      actions={
+        <>
+          <Button className="flex-1 sm:flex-none" onClick={onEdit}>
+            <PencilIcon data-icon="inline-start" />
+            Sửa
+          </Button>
+          <Button variant="outline" size="icon" aria-label="Xoá khoản chi" onClick={onDelete}>
+            <Trash2Icon />
+          </Button>
+        </>
+      }
+    >
       {entry.photoKey && (
         <Photo
           src={photo.data}
@@ -55,7 +82,8 @@ function EntryDetail({ entry, onEdit, onDelete }: { entry: Entry; onEdit: () => 
           className="aspect-square w-full rounded-lg"
         />
       )}
-      <DialogHeader>
+      {/* No photo on top: the title is the first line, keep it clear of the ✕. */}
+      <DialogHeader className={entry.photoKey ? undefined : "pr-10"}>
         <DialogTitle>{name}</DialogTitle>
         <DialogDescription>
           {formatDate(entry.purchasedAt, { timeStyle: "short" })} · {formatDate(entry.purchasedAt, { dateStyle: "full" })}
@@ -98,17 +126,7 @@ function EntryDetail({ entry, onEdit, onDelete }: { entry: Entry; onEdit: () => 
           </div>
         )}
       </dl>
-      <DialogFooter>
-        <Button variant="outline" onClick={onDelete}>
-          <Trash2Icon data-icon="inline-start" />
-          Xoá
-        </Button>
-        <Button onClick={onEdit}>
-          <PencilIcon data-icon="inline-start" />
-          Sửa
-        </Button>
-      </DialogFooter>
-    </>
+    </DetailLayout>
   )
 }
 
@@ -116,7 +134,7 @@ function EntryDetail({ entry, onEdit, onDelete }: { entry: Entry; onEdit: () => 
 function LockedDetail({ entry }: { entry: LockedEntry }) {
   const notice = useHistoryNotice()
   return (
-    <>
+    <DetailLayout actions={<UpgradeButton className="flex-1 sm:flex-none" />}>
       <LockedTile className="aspect-video w-full rounded-lg" />
       <DialogHeader>
         <DialogTitle>Khoản chi đã khoá</DialogTitle>
@@ -125,16 +143,13 @@ function LockedDetail({ entry }: { entry: LockedEntry }) {
         </DialogDescription>
       </DialogHeader>
       <p className="text-muted-foreground text-sm">{notice}</p>
-      <DialogFooter>
-        <UpgradeButton />
-      </DialogFooter>
-    </>
+    </DetailLayout>
   )
 }
 
 function DetailSkeleton() {
   return (
-    <>
+    <DetailLayout>
       <Skeleton className="aspect-square w-full rounded-lg" />
       <DialogHeader>
         <DialogTitle>
@@ -143,7 +158,7 @@ function DetailSkeleton() {
         <DialogDescription className="sr-only">Đang tải khoản chi</DialogDescription>
         <Skeleton className="h-4 w-56" />
       </DialogHeader>
-    </>
+    </DetailLayout>
   )
 }
 
@@ -187,10 +202,10 @@ export function EntryDetailDialog({
     body = <EntryDetail entry={entry} onEdit={() => setEditing(true)} onDelete={() => setDeleting(entry)} />
   } else if (query.isError && !notFound) {
     body = (
-      <>
+      <DetailLayout>
         <DialogTitle className="sr-only">Khoản chi</DialogTitle>
         <ErrorState error={query.error} onRetry={() => query.refetch()} retrying={query.isFetching} />
-      </>
+      </DetailLayout>
     )
   } else {
     body = <DetailSkeleton />
@@ -199,9 +214,23 @@ export function EntryDetailDialog({
   return (
     <>
       <Dialog open={!!entryId && !notFound} onOpenChange={onOpenChange}>
-        {/* auto-rows-max: the photo clips its overflow, so as a grid item its min height is 0
-            and on short screens the row would collapse under the text instead of scrolling. */}
-        <DialogContent className="max-h-[90svh] auto-rows-max overflow-y-auto sm:max-w-md">{body}</DialogContent>
+        <DialogContent
+          className="flex max-h-[90svh] flex-col gap-0 overflow-hidden p-0 sm:max-w-md"
+          showCloseButton={false}
+        >
+          {body}
+          {/* The default ghost ✕ vanishes over the photo: give it its own backdrop. */}
+          <DialogClose asChild>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              aria-label="Đóng"
+              className="absolute top-3 right-3 z-10 rounded-full bg-background/80 shadow-sm backdrop-blur-sm dark:bg-background/70"
+            >
+              <XIcon />
+            </Button>
+          </DialogClose>
+        </DialogContent>
       </Dialog>
       <EntryFormDialog open={editing} entry={entry} onOpenChange={setEditing} />
       <DeleteEntryDialog

@@ -15,6 +15,8 @@ import Link from "next/link"
 import { useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { toast } from "sonner"
 
+import { DateTimePicker } from "@/components/dashboard/date-time-picker"
+import { PlaceSearch } from "@/components/dashboard/place-search"
 import { UPGRADE_HREF } from "@/components/dashboard/pro-lock"
 import { Photo } from "@/components/shared/photo"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -59,7 +61,7 @@ import {
   type Coords,
   type PickedLocation,
 } from "@/lib/photo-location"
-import type { Entry, EntryInput, EntryRow } from "@/types/api"
+import type { Entry, EntryInput, EntryRow, PlaceSuggestion } from "@/types/api"
 
 // MapLibre (~220 KB) loads only once the location field shows a map.
 const LocationPicker = dynamic(() => import("@/components/dashboard/location-picker"), {
@@ -315,11 +317,25 @@ function PhotoField({
   )
 }
 
-const SOURCE_LABEL: Record<PickedLocation["source"], string> = {
-  exif: "Lấy từ thông tin GPS trong ảnh.",
-  device: "Vị trí của máy lúc chụp.",
-  manual: "Đã chọn trên bản đồ.",
-  saved: "Vị trí đã lưu.",
+// Beyond this a device fix is a neighbourhood, not a shop: ask for a manual nudge.
+const COARSE_ACCURACY_M = 100
+
+function sourceLabel({ source, accuracy }: PickedLocation) {
+  switch (source) {
+    case "exif":
+      return "Lấy từ thông tin GPS trong ảnh."
+    case "device": {
+      if (accuracy === undefined) return "Vị trí hiện tại của máy."
+      const m = `Vị trí của máy, sai số ±${Math.round(accuracy)} m.`
+      return accuracy > COARSE_ACCURACY_M ? `${m} Sai số lớn, nên kéo ghim về đúng chỗ.` : m
+    }
+    case "search":
+      return "Lấy từ kết quả tìm kiếm."
+    case "manual":
+      return "Đã chọn trên bản đồ."
+    case "saved":
+      return "Vị trí đã lưu."
+  }
 }
 
 function LocationField({
@@ -327,13 +343,16 @@ function LocationField({
   locating,
   disabled,
   onChange,
+  onSearchPick,
   onUseDevice,
   onClear,
 }: {
   location: PickedLocation | null
-  locating: boolean
+  /** false = idle; true = waiting for a first fix; a number = best accuracy so far (m). */
+  locating: boolean | number
   disabled: boolean
   onChange: (c: Coords) => void
+  onSearchPick: (place: PlaceSuggestion) => void
   onUseDevice: () => void
   onClear: () => void
 }) {
@@ -343,12 +362,13 @@ function LocationField({
   return (
     <Field>
       <FieldLabel>Vị trí</FieldLabel>
+      <PlaceSearch near={location} disabled={disabled} onPick={onSearchPick} />
       {showMap && (
         <LocationPicker value={location} onChange={onChange} className="h-56 w-full rounded-lg border" />
       )}
       <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="outline" size="sm" disabled={disabled || locating} onClick={onUseDevice}>
-          {locating ? <Spinner data-icon="inline-start" /> : <LocateFixedIcon data-icon="inline-start" />}
+        <Button type="button" variant="outline" size="sm" disabled={disabled || locating !== false} onClick={onUseDevice}>
+          {locating !== false ? <Spinner data-icon="inline-start" /> : <LocateFixedIcon data-icon="inline-start" />}
           Vị trí hiện tại
         </Button>
         {!showMap && (
@@ -374,13 +394,13 @@ function LocationField({
         )}
       </div>
       <FieldDescription>
-        {locating
-          ? "Đang lấy vị trí…"
+        {locating !== false
+          ? `Đang lấy vị trí${typeof locating === "number" ? ` (±${Math.round(locating)} m)` : ""}…`
           : location
-            ? `${SOURCE_LABEL[location.source]} Kéo ghim hoặc chạm bản đồ để chỉnh.`
+            ? `${sourceLabel(location)} Kéo ghim hoặc chạm bản đồ để chỉnh.`
             : showMap
-              ? "Chạm vào bản đồ để đặt vị trí."
-              : "Khoản chi có vị trí sẽ hiện trên tab Bản đồ."}
+              ? "Tìm địa chỉ hoặc chạm vào bản đồ để đặt vị trí."
+              : "Tìm địa chỉ để đặt vị trí. Khoản chi có vị trí sẽ hiện trên tab Bản đồ."}
       </FieldDescription>
     </Field>
   )
@@ -412,45 +432,69 @@ function EntryForm({
 
   // Location (plans/08): photo EXIF → device GPS for a fresh capture → map pin.
   const [location, setLocation] = useState<PickedLocation | null>(() => savedLocation(entry))
-  const [locating, setLocating] = useState(false)
+  const [locating, setLocating] = useState<boolean | number>(false)
   const [timeFromPhoto, setTimeFromPhoto] = useState(false)
   // Later picks / pins win over slower lookups still in flight.
   const locateSeq = useRef(0)
   const geocodeSeq = useRef(0)
   const purchasedTouched = useRef(false)
-  // What reverse geocoding last wrote: a field still holding it may be overwritten, one the user typed may not.
+  // What geocoding last wrote: a field still holding it may be overwritten, one the user typed may not.
   const autoFilled = useRef<{ address?: string; storeName?: string }>({})
 
-  async function fillAddress(c: Coords) {
+  /**
+   * `picked` = the user chose this spot themselves (map, search, "current
+   * location"), so the address follows the pin even over typed or saved text.
+   * A spot that came with a photo only fills what is empty or auto-filled. The
+   * store name is never forced: moving the pin inside a market must not swap
+   * "Chợ Bến Thành" for whichever stall the geocoder lands on.
+   */
+  function autoFill(address: string | null, placeName: string | null, picked: boolean) {
+    const auto = autoFilled.current
+    setValues((v) => {
+      const next = { ...v }
+      if (address && (picked || !v.address.trim() || v.address === auto.address)) next.address = auto.address = address
+      if (placeName && (!v.storeName.trim() || v.storeName === auto.storeName))
+        next.storeName = auto.storeName = placeName
+      return next
+    })
+  }
+
+  async function fillAddress(c: Coords, picked: boolean) {
     const seq = ++geocodeSeq.current
     try {
       const { address, placeName } = await geocodeApi.reverse(c.lat, c.lng)
-      if (seq !== geocodeSeq.current) return
-      const auto = autoFilled.current
-      setValues((v) => {
-        const next = { ...v }
-        if (address && (!v.address.trim() || v.address === auto.address)) next.address = auto.address = address
-        if (placeName && (!v.storeName.trim() || v.storeName === auto.storeName))
-          next.storeName = auto.storeName = placeName
-        return next
-      })
+      if (seq === geocodeSeq.current) autoFill(address, placeName, picked)
     } catch {
       // Address lookup is a convenience; the pin is what matters.
     }
   }
 
-  function placeAt(next: PickedLocation) {
+  /** A search suggestion already carries its address: no reverse lookup needed. */
+  function onSearchPick(place: PlaceSuggestion) {
+    ++locateSeq.current
+    ++geocodeSeq.current
+    setLocating(false)
+    setLocation({ lat: place.lat, lng: place.lng, source: "search" })
+    autoFill(place.address, place.placeName, true)
+  }
+
+  function placeAt(next: PickedLocation, picked: boolean) {
     setLocation(next)
-    void fillAddress(next)
+    void fillAddress(next, picked)
   }
 
   /** null = superseded by a newer pick or pin while waiting for a fix. */
-  async function locateDevice(seq: number): Promise<boolean | null> {
+  async function locateDevice(seq: number, picked: boolean): Promise<boolean | null> {
     setLocating(true)
-    const pos = await getDevicePosition()
+    // Each sharper fix moves the pin right away; the address waits for the final one.
+    const pos = await getDevicePosition((fix) => {
+      if (seq !== locateSeq.current) return
+      setLocating(fix.accuracy)
+      setLocation({ ...fix, source: "device" })
+    })
     if (seq !== locateSeq.current) return null
     setLocating(false)
-    if (pos) placeAt({ ...pos, source: "device" })
+    if (pos) placeAt({ ...pos, source: "device" }, picked)
     return !!pos
   }
 
@@ -464,13 +508,13 @@ function EntryForm({
       setValues((v) => ({ ...v, purchasedAt: toVnInput(meta.takenAt!) }))
       setTimeFromPhoto(true)
     }
-    if (meta.gps) placeAt({ ...meta.gps, source: "exif" })
+    if (meta.gps) placeAt({ ...meta.gps, source: "exif" }, false)
     // No GPS in the file: only a photo taken just now may borrow the phone's position.
-    else if (isFreshCapture(file)) await locateDevice(seq)
+    else if (isFreshCapture(file)) await locateDevice(seq, false)
   }
 
   async function onUseDevice() {
-    const found = await locateDevice(++locateSeq.current)
+    const found = await locateDevice(++locateSeq.current, true)
     if (found === false) {
       toast.error("Không lấy được vị trí. Kiểm tra quyền truy cập vị trí của trình duyệt.", { id: "locate-failed" })
     }
@@ -539,8 +583,9 @@ function EntryForm({
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate>
-      <FieldGroup>
+    // Only the fields scroll; the dialog header above and the actions below stay put.
+    <form onSubmit={onSubmit} noValidate className="flex min-h-0 flex-1 flex-col">
+      <FieldGroup className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain p-4">
         {atCap && limits && (
           <Alert>
             <LockIcon />
@@ -627,16 +672,14 @@ function EntryForm({
 
         <Field data-invalid={!!errors.purchasedAt || undefined}>
           <FieldLabel htmlFor="purchasedAt">Giờ mua</FieldLabel>
-          <Input
+          <DateTimePicker
             id="purchasedAt"
-            type="datetime-local"
-            max={toVnInput(new Date())}
-            aria-invalid={!!errors.purchasedAt || undefined}
             value={values.purchasedAt}
-            onChange={(e) => {
+            invalid={!!errors.purchasedAt}
+            onChange={(v) => {
               purchasedTouched.current = true
               setTimeFromPhoto(false)
-              set("purchasedAt")(e.target.value)
+              set("purchasedAt")(v)
             }}
           />
           {errors.purchasedAt ? (
@@ -676,8 +719,9 @@ function EntryForm({
           onChange={(c) => {
             ++locateSeq.current
             setLocating(false)
-            placeAt({ ...c, source: "manual" })
+            placeAt({ ...c, source: "manual" }, true)
           }}
+          onSearchPick={onSearchPick}
           onUseDevice={onUseDevice}
           onClear={() => {
             ++locateSeq.current
@@ -697,18 +741,19 @@ function EntryForm({
           />
         </Field>
 
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button type="button" variant="outline" disabled={busy}>
-              Huỷ
-            </Button>
-          </DialogClose>
-          <Button type="submit" disabled={busy || atCap}>
-            {busy && <Spinner data-icon="inline-start" />}
-            {upload.isPending ? "Đang tải ảnh…" : busy ? "Đang lưu…" : entry ? "Lưu" : "Thêm"}
-          </Button>
-        </DialogFooter>
       </FieldGroup>
+
+      <DialogFooter className="m-0 shrink-0 rounded-none pb-[max(1rem,env(safe-area-inset-bottom))] sm:rounded-b-xl sm:pb-4">
+        <DialogClose asChild>
+          <Button type="button" variant="outline" disabled={busy}>
+            Huỷ
+          </Button>
+        </DialogClose>
+        <Button type="submit" disabled={busy || atCap}>
+          {busy && <Spinner data-icon="inline-start" />}
+          {upload.isPending ? "Đang tải ảnh…" : busy ? "Đang lưu…" : entry ? "Lưu" : "Thêm"}
+        </Button>
+      </DialogFooter>
     </form>
   )
 }
@@ -740,8 +785,12 @@ export function EntryFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md" showCloseButton={!busy}>
-        <DialogHeader>
+      {/* Full screen on phones (a long form in a floating card wastes the edges), centred card from `sm` up. */}
+      <DialogContent
+        className="top-0 left-0 flex h-dvh max-h-dvh w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 ring-0 sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[90svh] sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl sm:ring-1"
+        showCloseButton={!busy}
+      >
+        <DialogHeader className="shrink-0 border-b p-4 pr-12">
           <DialogTitle>{shown ? "Sửa khoản chi" : "Thêm khoản chi"}</DialogTitle>
           <DialogDescription>
             {shown ? "Thay đổi được lưu ngay khi bấm Lưu." : "Ghi lại một khoản chi, ảnh là tuỳ chọn."}
