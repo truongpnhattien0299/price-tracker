@@ -1,6 +1,8 @@
 "use client"
 
-import { PencilIcon, Trash2Icon } from "lucide-react"
+import { MapPinIcon, PencilIcon, Trash2Icon } from "lucide-react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 
 import { DeleteEntryDialog } from "@/components/dashboard/delete-entry-dialog"
@@ -40,6 +42,8 @@ function EntryDetail({ entry, onEdit, onDelete }: { entry: Entry; onEdit: () => 
   const photo = usePhotoUrl(entry.photoKey)
   const category = entry.categoryId ? categories.get(entry.categoryId) : undefined
   const name = entry.productName ?? "Khoản chi"
+  // Already on the map, the pin is right behind the dialog.
+  const onMap = usePathname() === "/dashboard/map"
 
   return (
     <>
@@ -75,6 +79,17 @@ function EntryDetail({ entry, onEdit, onDelete }: { entry: Entry; onEdit: () => 
         </Detail>
         {entry.storeName && <Detail label="Cửa hàng">{entry.storeName}</Detail>}
         {entry.address && <Detail label="Địa chỉ">{entry.address}</Detail>}
+        {entry.latitude && entry.longitude && !onMap && (
+          <Detail label="Vị trí">
+            <Link
+              href={`/dashboard/map?entry=${entry.id}`}
+              className="inline-flex items-center gap-1 underline underline-offset-4"
+            >
+              <MapPinIcon className="size-3.5" />
+              Xem trên bản đồ
+            </Link>
+          </Detail>
+        )}
         {entry.note && (
           <div className="col-span-2">
             <Detail label="Ghi chú">

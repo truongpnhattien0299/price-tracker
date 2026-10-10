@@ -21,6 +21,7 @@ Kế hoạch phát triển web app (Next.js 15 + shadcn/ui). Mỗi plan là mộ
 | [05](05-landing.md) | Landing: nội dung thật, ảnh app, link store, giá Pro | ✅ Xong 2026-10-10 |
 | [06](06-theme-brand.md) | Theme / brand color: xanh lá hue 152, chart, icon, ảnh OG | ✅ Xong 2026-10-10 |
 | [07](07-entitlement.md) | Entitlement: `/me/entitlement`, trần 50/tháng (402), khoá dữ liệu > 3 tháng, trial còn lại (backend Phase 10 phần không IAP) | ✅ Xong 2026-10-10 |
+| [08](08-map.md) | Vị trí ảnh (EXIF / GPS lúc chụp / chọn tay, Nominatim) + tab Bản đồ (MapLibre + vector tile OpenFreeMap, style riêng kiểu Google Maps, gom cụm ảnh) | ✅ Xong 2026-10-10 |
 
 ## Cách verify chung
 

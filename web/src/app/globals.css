@@ -150,3 +150,24 @@
     @apply font-sans;
   }
 }
+/* MapLibre controls (plans/08): follow the app theme instead of MapLibre's fixed white. */
+@layer components {
+  .maplibregl-ctrl-group {
+    @apply bg-background! border-border! border shadow-sm!;
+  }
+  .maplibregl-ctrl-group button + button {
+    @apply border-border!;
+  }
+  .dark .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+    filter: invert(1);
+  }
+  .maplibregl-ctrl-attrib {
+    @apply bg-background/80! text-muted-foreground! text-[11px];
+  }
+  .maplibregl-ctrl-attrib a {
+    @apply text-muted-foreground!;
+  }
+  .dark .maplibregl-ctrl-attrib-button {
+    filter: invert(1);
+  }
+}

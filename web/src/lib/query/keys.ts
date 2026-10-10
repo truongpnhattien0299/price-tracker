@@ -1,4 +1,4 @@
-import type { EntryQuery, GroupBy, ReportRange } from "@/types/api"
+import type { EntryQuery, GroupBy, MapQuery, ReportRange } from "@/types/api"
 
 // Single source of truth for React Query keys. Prefix keys (`entries.all`,
 // `reports.all`, `["calendar"]`) exist so mutations can invalidate a whole family.
@@ -10,6 +10,8 @@ export const qk = {
     all: ["entries"] as const,
     list: (q: EntryQuery) => ["entries", "list", q] as const,
     detail: (id: string) => ["entries", "detail", id] as const,
+    // Under `entries`, so every entry mutation refreshes the map too.
+    map: (q: MapQuery) => ["entries", "map", q] as const,
   },
   calendar: {
     all: ["calendar"] as const,

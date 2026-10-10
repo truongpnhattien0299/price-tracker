@@ -1,8 +1,18 @@
 "use client"
 
-import { CircleAlertIcon, ImagePlusIcon, LockIcon, Trash2Icon } from "lucide-react"
+import {
+  CameraIcon,
+  CircleAlertIcon,
+  ImagePlusIcon,
+  LocateFixedIcon,
+  LockIcon,
+  MapIcon,
+  Trash2Icon,
+  XIcon,
+} from "lucide-react"
+import dynamic from "next/dynamic"
 import Link from "next/link"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { toast } from "sonner"
 
 import { UPGRADE_HREF } from "@/components/dashboard/pro-lock"
@@ -29,6 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import { useCategories } from "@/hooks/queries/use-categories"
@@ -37,9 +48,24 @@ import { useCreateEntry, useUpdateEntry } from "@/hooks/queries/use-entries"
 import { usePhotoUrl } from "@/hooks/queries/use-photo-url"
 import { UploadError, useUploadPhoto } from "@/hooks/queries/use-upload-photo"
 import { HttpError } from "@/lib/api/client"
+import { geocodeApi } from "@/lib/api/endpoints"
 import { fromVnInput, toVnInput } from "@/lib/date-range"
 import { ACCEPTED_IMAGE_TYPES, MAX_IMAGE_BYTES } from "@/lib/image"
+import {
+  getDevicePosition,
+  isFreshCapture,
+  readPhotoMeta,
+  roundCoord,
+  type Coords,
+  type PickedLocation,
+} from "@/lib/photo-location"
 import type { Entry, EntryInput, EntryRow } from "@/types/api"
+
+// MapLibre (~220 KB) loads only once the location field shows a map.
+const LocationPicker = dynamic(() => import("@/components/dashboard/location-picker"), {
+  ssr: false,
+  loading: () => <Skeleton className="size-full rounded-none" />,
+})
 
 const NO_CATEGORY = "none"
 const DECIMAL_PRICE = /^\d{0,10}(\.\d{0,2})?$/
@@ -84,8 +110,20 @@ function toInput(v: Values) {
   }
 }
 
+function savedLocation(entry: Entry | null): PickedLocation | null {
+  if (!entry?.latitude || !entry.longitude) return null
+  return { lat: Number(entry.latitude), lng: Number(entry.longitude), source: "saved" }
+}
+
+/** Both halves or neither: the API refuses half a coordinate. */
+function coordsInput(location: Coords | null): Pick<EntryInput, "latitude" | "longitude"> {
+  return location
+    ? { latitude: roundCoord(location.lat), longitude: roundCoord(location.lng) }
+    : { latitude: null, longitude: null }
+}
+
 /** PATCH body with only the fields that changed; null clears a field. */
-function diff(entry: Entry, v: Values): EntryInput {
+function diff(entry: Entry, v: Values, location: Coords | null): EntryInput {
   const next = toInput(v)
   const out: EntryInput = {}
   if (next.price !== Number(entry.price)) out.price = next.price
@@ -94,6 +132,9 @@ function diff(entry: Entry, v: Values): EntryInput {
   }
   // Compared at minute precision, the input's resolution, so seconds survive an untouched field.
   if (v.purchasedAt !== toVnInput(entry.purchasedAt)) out.purchasedAt = fromVnInput(v.purchasedAt)
+  const coords = coordsInput(location)
+  const was = coordsInput(savedLocation(entry))
+  if (coords.latitude !== was.latitude || coords.longitude !== was.longitude) Object.assign(out, coords)
   return out
 }
 
@@ -174,6 +215,20 @@ function PriceInput({
   )
 }
 
+// Phones and tablets get a "take photo" button (input `capture`); a desktop has no camera flow worth offering.
+const COARSE = "(pointer: coarse)"
+function useCoarsePointer() {
+  return useSyncExternalStore(
+    (cb) => {
+      const mql = window.matchMedia(COARSE)
+      mql.addEventListener("change", cb)
+      return () => mql.removeEventListener("change", cb)
+    },
+    () => window.matchMedia(COARSE).matches,
+    () => false,
+  )
+}
+
 function PhotoField({
   entry,
   photo,
@@ -190,6 +245,8 @@ function PhotoField({
   onRemove: () => void
 }) {
   const input = useRef<HTMLInputElement>(null)
+  const camera = useRef<HTMLInputElement>(null)
+  const canCapture = useCoarsePointer()
   const existing = usePhotoUrl(photo.kind === "keep" ? entry?.photoKey : null)
   const hasPhoto = photo.kind === "new" || (photo.kind === "keep" && !!entry?.photoKey)
 
@@ -216,6 +273,12 @@ function PhotoField({
           </button>
         )}
         <div className="flex flex-col items-start gap-2">
+          {canCapture && (
+            <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => camera.current?.click()}>
+              <CameraIcon data-icon="inline-start" />
+              Chụp ảnh
+            </Button>
+          )}
           <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => input.current?.click()}>
             <ImagePlusIcon data-icon="inline-start" />
             {hasPhoto ? "Đổi ảnh" : "Chọn ảnh"}
@@ -228,21 +291,97 @@ function PhotoField({
           )}
         </div>
       </div>
-      <input
-        ref={input}
-        id="photo"
-        type="file"
-        accept={ACCEPTED_IMAGE_TYPES.join(",")}
-        className="sr-only"
-        tabIndex={-1}
-        onChange={(e) => {
-          const file = e.target.files?.[0]
-          // Let the same file be picked again after "Bỏ ảnh".
-          e.target.value = ""
-          if (file) onPick(file)
-        }}
-      />
+      {[input, camera].map((ref) => (
+        <input
+          key={ref === camera ? "camera" : "file"}
+          ref={ref}
+          id={ref === camera ? undefined : "photo"}
+          type="file"
+          accept={ACCEPTED_IMAGE_TYPES.join(",")}
+          // Opens the rear camera straight away; the photo's position is then the phone's (plans/08 M4).
+          capture={ref === camera ? "environment" : undefined}
+          className="sr-only"
+          tabIndex={-1}
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            // Let the same file be picked again after "Bỏ ảnh".
+            e.target.value = ""
+            if (file) onPick(file)
+          }}
+        />
+      ))}
       {error ? <FieldError>{error}</FieldError> : <FieldDescription>JPEG, PNG hoặc WebP. Ảnh được thu nhỏ trước khi tải lên.</FieldDescription>}
+    </Field>
+  )
+}
+
+const SOURCE_LABEL: Record<PickedLocation["source"], string> = {
+  exif: "Lấy từ thông tin GPS trong ảnh.",
+  device: "Vị trí của máy lúc chụp.",
+  manual: "Đã chọn trên bản đồ.",
+  saved: "Vị trí đã lưu.",
+}
+
+function LocationField({
+  location,
+  locating,
+  disabled,
+  onChange,
+  onUseDevice,
+  onClear,
+}: {
+  location: PickedLocation | null
+  locating: boolean
+  disabled: boolean
+  onChange: (c: Coords) => void
+  onUseDevice: () => void
+  onClear: () => void
+}) {
+  const [mapOpen, setMapOpen] = useState(false)
+  const showMap = !!location || mapOpen
+
+  return (
+    <Field>
+      <FieldLabel>Vị trí</FieldLabel>
+      {showMap && (
+        <LocationPicker value={location} onChange={onChange} className="h-56 w-full rounded-lg border" />
+      )}
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" size="sm" disabled={disabled || locating} onClick={onUseDevice}>
+          {locating ? <Spinner data-icon="inline-start" /> : <LocateFixedIcon data-icon="inline-start" />}
+          Vị trí hiện tại
+        </Button>
+        {!showMap && (
+          <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => setMapOpen(true)}>
+            <MapIcon data-icon="inline-start" />
+            Chọn trên bản đồ
+          </Button>
+        )}
+        {location && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={disabled}
+            onClick={() => {
+              setMapOpen(false)
+              onClear()
+            }}
+          >
+            <XIcon data-icon="inline-start" />
+            Xoá vị trí
+          </Button>
+        )}
+      </div>
+      <FieldDescription>
+        {locating
+          ? "Đang lấy vị trí…"
+          : location
+            ? `${SOURCE_LABEL[location.source]} Kéo ghim hoặc chạm bản đồ để chỉnh.`
+            : showMap
+              ? "Chạm vào bản đồ để đặt vị trí."
+              : "Khoản chi có vị trí sẽ hiện trên tab Bản đồ."}
+      </FieldDescription>
     </Field>
   )
 }
@@ -271,6 +410,72 @@ function EntryForm({
   const [formError, setFormError] = useState<string | null>(null)
   const set = (k: keyof Values) => (v: string) => setValues((prev) => ({ ...prev, [k]: v }))
 
+  // Location (plans/08): photo EXIF → device GPS for a fresh capture → map pin.
+  const [location, setLocation] = useState<PickedLocation | null>(() => savedLocation(entry))
+  const [locating, setLocating] = useState(false)
+  const [timeFromPhoto, setTimeFromPhoto] = useState(false)
+  // Later picks / pins win over slower lookups still in flight.
+  const locateSeq = useRef(0)
+  const geocodeSeq = useRef(0)
+  const purchasedTouched = useRef(false)
+  // What reverse geocoding last wrote: a field still holding it may be overwritten, one the user typed may not.
+  const autoFilled = useRef<{ address?: string; storeName?: string }>({})
+
+  async function fillAddress(c: Coords) {
+    const seq = ++geocodeSeq.current
+    try {
+      const { address, placeName } = await geocodeApi.reverse(c.lat, c.lng)
+      if (seq !== geocodeSeq.current) return
+      const auto = autoFilled.current
+      setValues((v) => {
+        const next = { ...v }
+        if (address && (!v.address.trim() || v.address === auto.address)) next.address = auto.address = address
+        if (placeName && (!v.storeName.trim() || v.storeName === auto.storeName))
+          next.storeName = auto.storeName = placeName
+        return next
+      })
+    } catch {
+      // Address lookup is a convenience; the pin is what matters.
+    }
+  }
+
+  function placeAt(next: PickedLocation) {
+    setLocation(next)
+    void fillAddress(next)
+  }
+
+  /** null = superseded by a newer pick or pin while waiting for a fix. */
+  async function locateDevice(seq: number): Promise<boolean | null> {
+    setLocating(true)
+    const pos = await getDevicePosition()
+    if (seq !== locateSeq.current) return null
+    setLocating(false)
+    if (pos) placeAt({ ...pos, source: "device" })
+    return !!pos
+  }
+
+  /** Where (and when) a newly picked photo was taken. */
+  async function locatePhoto(file: File) {
+    const seq = ++locateSeq.current
+    setLocating(false)
+    const meta = await readPhotoMeta(file)
+    if (seq !== locateSeq.current) return
+    if (meta.takenAt && !entry && !purchasedTouched.current && new Date(meta.takenAt).getTime() <= Date.now()) {
+      setValues((v) => ({ ...v, purchasedAt: toVnInput(meta.takenAt!) }))
+      setTimeFromPhoto(true)
+    }
+    if (meta.gps) placeAt({ ...meta.gps, source: "exif" })
+    // No GPS in the file: only a photo taken just now may borrow the phone's position.
+    else if (isFreshCapture(file)) await locateDevice(seq)
+  }
+
+  async function onUseDevice() {
+    const found = await locateDevice(++locateSeq.current)
+    if (found === false) {
+      toast.error("Không lấy được vị trí. Kiểm tra quyền truy cập vị trí của trình duyệt.", { id: "locate-failed" })
+    }
+  }
+
   const currency = entry?.currency ?? "VND"
   // Mobile only writes whole VND; anything else keeps its cents.
   const [decimals] = useState(() => currency !== "VND" || !Number.isInteger(Number(entry?.price ?? 0)))
@@ -292,6 +497,7 @@ function EntryForm({
     }
     setErrors((e) => ({ ...e, photo: undefined }))
     setPhoto({ kind: "new", file, preview: URL.createObjectURL(file) })
+    void locatePhoto(file)
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -309,7 +515,7 @@ function EntryForm({
       stage = "save"
 
       if (entry) {
-        const input = diff(entry, values)
+        const input = diff(entry, values, location)
         if (photoKey !== undefined) input.photoKey = photoKey
         if (Object.keys(input).length === 0) return onDone(entry)
         const saved = await update.mutateAsync({ id: entry.id, input })
@@ -322,6 +528,7 @@ function EntryForm({
         )
         input.purchasedAt = fromVnInput(values.purchasedAt)
         if (photoKey) input.photoKey = photoKey
+        if (location) Object.assign(input, coordsInput(location))
         const saved = await create.mutateAsync(input)
         toast.success("Đã thêm khoản chi.")
         onDone(saved)
@@ -426,12 +633,18 @@ function EntryForm({
             max={toVnInput(new Date())}
             aria-invalid={!!errors.purchasedAt || undefined}
             value={values.purchasedAt}
-            onChange={(e) => set("purchasedAt")(e.target.value)}
+            onChange={(e) => {
+              purchasedTouched.current = true
+              setTimeFromPhoto(false)
+              set("purchasedAt")(e.target.value)
+            }}
           />
           {errors.purchasedAt ? (
             <FieldError>{errors.purchasedAt}</FieldError>
           ) : (
-            <FieldDescription>Theo giờ Việt Nam.</FieldDescription>
+            <FieldDescription>
+              {timeFromPhoto ? "Lấy từ giờ chụp trong ảnh, theo giờ Việt Nam." : "Theo giờ Việt Nam."}
+            </FieldDescription>
           )}
         </Field>
 
@@ -455,6 +668,24 @@ function EntryForm({
             onChange={(e) => set("address")(e.target.value)}
           />
         </Field>
+
+        <LocationField
+          location={location}
+          locating={locating}
+          disabled={busy}
+          onChange={(c) => {
+            ++locateSeq.current
+            setLocating(false)
+            placeAt({ ...c, source: "manual" })
+          }}
+          onUseDevice={onUseDevice}
+          onClear={() => {
+            ++locateSeq.current
+            ++geocodeSeq.current
+            setLocating(false)
+            setLocation(null)
+          }}
+        />
 
         <Field>
           <FieldLabel htmlFor="note">Ghi chú</FieldLabel>
@@ -482,7 +713,7 @@ function EntryForm({
   )
 }
 
-/** Create (`entry` null) or edit one entry. GPS coordinates are not editable on web. */
+/** Create (`entry` null) or edit one entry, including where it was bought (plans/08). */
 export function EntryFormDialog({
   open,
   entry,
