@@ -93,3 +93,36 @@ export function periodsInRange(range: Required<ReportRange>, groupBy: GroupBy): 
   }
   return keys
 }
+
+/** `YYYY-MM` of the current VN month. */
+export function currentMonthKey(now = new Date()) {
+  const { y, m } = vnParts(now)
+  return `${y}-${pad(m + 1)}`
+}
+
+/** `YYYY-MM-DD` of the current VN day. */
+export function todayKey(now = new Date()) {
+  const { y, m, d } = vnParts(now)
+  return `${y}-${pad(m + 1)}-${pad(d)}`
+}
+
+/** `shiftMonth("2026-01", -1)` → `"2025-12"`. */
+export function shiftMonth(month: string, n: number) {
+  const [y, m] = month.split("-").map(Number) as [number, number]
+  const t = new Date(Date.UTC(y, m - 1 + n, 1))
+  return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}`
+}
+
+/**
+ * Cells of a Monday-first month grid: `null` pads the days before the 1st,
+ * then one `YYYY-MM-DD` per day. Pure calendar math, no time zone involved.
+ */
+export function monthGrid(month: string): (string | null)[] {
+  const [y, m] = month.split("-").map(Number) as [number, number]
+  const days = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  const lead = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7 // Mon = 0
+  return [
+    ...Array<null>(lead).fill(null),
+    ...Array.from({ length: days }, (_, i) => `${month}-${pad(i + 1)}`),
+  ]
+}

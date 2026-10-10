@@ -43,6 +43,8 @@ export const entriesApi = {
 
 export const uploadsApi = {
   photoUrl: (key: string) => apiFetch<{ url: string }>("/uploads/photo-url", { query: { key } }),
+  photoUrls: (keys: string[]) =>
+    apiFetch<{ urls: Record<string, string> }>("/uploads/photo-urls", { method: "POST", body: { keys } }),
 }
 
 export const reportsApi = {

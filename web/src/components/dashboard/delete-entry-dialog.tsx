@@ -20,9 +20,11 @@ import type { Entry } from "@/types/api"
 export function DeleteEntryDialog({
   entry,
   onOpenChange,
+  onDeleted,
 }: {
   entry: Entry | null
   onOpenChange: (open: boolean) => void
+  onDeleted?: () => void
 }) {
   const remove = useDeleteEntry()
 
@@ -34,6 +36,7 @@ export function DeleteEntryDialog({
       onSuccess: () => {
         toast.success("Đã xoá khoản chi.")
         onOpenChange(false)
+        onDeleted?.()
       },
       onError: (err) => toast.error(err.message || "Không xoá được khoản chi."),
     })

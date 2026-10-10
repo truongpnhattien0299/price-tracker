@@ -22,4 +22,6 @@ export const qk = {
     topStores: (r: ReportRange) => ["reports", "top-stores", r] as const,
   },
   photoUrl: (key: string) => ["photo-url", key] as const,
+  /** `keys` must be sorted + unique so the same set maps to one cache entry. */
+  photoUrls: (keys: string[]) => ["photo-urls", keys] as const,
 }
