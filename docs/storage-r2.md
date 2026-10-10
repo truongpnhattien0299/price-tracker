@@ -36,7 +36,7 @@ Lần đầu phải bật R2 và khai báo phương thức thanh toán. Dùng tr
 Sau khi tạo, vào **Settings** của bucket:
 
 - **Public access:** để **tắt**, cả *R2.dev subdomain* lẫn *Custom domain*. Ảnh là dữ liệu riêng của từng user, chỉ đọc qua presigned GET 5 phút.
-- **CORS:** xem mục 4.
+- **CORS:** bắt buộc cho web upload, xem mục 4.
 
 ## 2. Tạo API token
 
@@ -108,12 +108,14 @@ Lỗi thường gặp:
 
 ## 4. CORS
 
-Hiện **không cần** CORS:
+**Bắt buộc** từ plan 04: web dashboard upload ảnh bằng `fetch` PUT thẳng từ browser lên R2. Thiếu CORS thì browser chặn, form báo "Không tải được ảnh lên".
 
-- App mobile PUT bằng `fetch` native, không qua browser.
-- Web chỉ hiện ảnh bằng `<img>`, không bị CORS chặn.
+Không cần CORS cho:
 
-Cần thêm khi **browser** PUT thẳng lên R2: Expo web (`pnpm run web`), hoặc web dashboard có upload (plan sau). Bucket → Settings → **CORS policy**:
+- App mobile: PUT bằng `fetch` native, không qua browser.
+- Hiển thị ảnh bằng `<img>`, không bị CORS chặn.
+
+MinIO local cho phép mọi origin nên dev không phải cấu hình gì. Với R2: Bucket → Settings → **CORS policy**:
 
 ```json
 [

@@ -181,8 +181,8 @@ Base URL: `/api/v1`. Tất cả endpoint (trừ auth) yêu cầu header `Authori
 | GET | `/entries` | List có phân trang + filter: `?page=&limit=&category=&from=&to=&search=&store=` |
 | GET | `/entries/calendar?month=YYYY-MM` | **Dữ liệu lưới lịch tháng**: mỗi ngày có entry trả về `{ date, count, coverPhotoKey }` — `coverPhotoKey` là **ảnh đầu tiên** trong ngày (ảnh đại diện ô lịch) |
 | GET | `/entries/:id` | Chi tiết 1 entry |
-| POST | `/entries` | Tạo entry: `{ productName, price, currency, unit, categoryId, photoKey, latitude, longitude, address, storeName, note, purchasedAt }` |
-| PATCH | `/entries/:id` | Cập nhật |
+| POST | `/entries` | Tạo entry: `{ productName, price, currency, unit, categoryId, photoKey, latitude, longitude, address, storeName, note, purchasedAt }`. `photoKey` phải thuộc `entries/<userId>/` của chính user, không thì **403** (xoá entry sẽ xoá object, nên không được gắn ảnh người khác). |
+| PATCH | `/entries/:id` | Cập nhật một phần. `null` xoá trường nullable; `price` / `currency` / `purchasedAt` = `null` → **400**. Cùng kiểm `photoKey` như POST. Đổi hoặc bỏ ảnh thì object cũ bị xoá (best-effort). |
 | DELETE | `/entries/:id` | Xóa (kèm xóa object trên R2) |
 
 ### 5.3. Upload (ảnh)
