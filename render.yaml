@@ -10,7 +10,11 @@ services:
     region: singapore # same region as the Neon project (aws-ap-southeast-1)
     branch: main
     rootDir: backend # also limits auto-deploys to changes under backend/
+    # The corepack bundled with Node 22.13 only knows npm's old registry signing
+    # keys and fails pnpm downloads with "Cannot find matching keyid" — upgrade
+    # it before enabling.
     buildCommand: >-
+      npm install -g corepack@latest &&
       corepack enable &&
       pnpm install --frozen-lockfile &&
       pnpm exec prisma migrate deploy &&
