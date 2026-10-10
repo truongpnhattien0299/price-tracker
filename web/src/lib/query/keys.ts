@@ -24,6 +24,8 @@ export const qk = {
     timeSeries: (g: GroupBy, r: ReportRange) => ["reports", "time-series", g, r] as const,
     topStores: (r: ReportRange) => ["reports", "top-stores", r] as const,
   },
+  /** `near` is rounded by the caller so small pin moves share a cache entry. */
+  placeSearch: (q: string, near: { lat: number; lng: number } | null) => ["place-search", q, near] as const,
   photoUrl: (key: string) => ["photo-url", key] as const,
   /** `keys` must be sorted + unique so the same set maps to one cache entry. */
   photoUrls: (keys: string[]) => ["photo-urls", keys] as const,

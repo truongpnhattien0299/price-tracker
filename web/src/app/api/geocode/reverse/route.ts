@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 
 import { errorResponse } from "@/lib/api/backend"
 import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/lib/auth/constants"
+import { createCache, GEOCODER_USER_AGENT, isSellingPlace, joinAddress } from "@/lib/geocode"
 import type { ReverseGeocode } from "@/types/api"
 
 /**
@@ -13,7 +14,6 @@ import type { ReverseGeocode } from "@/types/api"
  */
 
 const NOMINATIM = process.env.NOMINATIM_URL ?? "https://nominatim.openstreetmap.org"
-const USER_AGENT = "price-tracker-web/0.1 (+https://github.com/truongpnhattien0299/price-tracker)"
 const MIN_GAP_MS = 1100
 
 type NominatimAddress = Partial<
@@ -41,39 +41,18 @@ type NominatimResult = {
   error?: string
 }
 
-// Places that sell things: any shop, plus the amenities people pay at.
-// A church or a town hall next to the pin must not become the "store".
-const SELLING_AMENITIES = new Set([
-  "marketplace",
-  "restaurant",
-  "cafe",
-  "fast_food",
-  "food_court",
-  "bar",
-  "pub",
-  "ice_cream",
-  "fuel",
-  "pharmacy",
-])
-
-function isSellingPlace(r: NominatimResult) {
-  return r.category === "shop" || (r.category === "amenity" && !!r.type && SELLING_AMENITIES.has(r.type))
-}
-
 function shortAddress(a: NominatimAddress = {}) {
   const street = [a.house_number, a.road ?? a.pedestrian].filter(Boolean).join(" ")
-  const parts = [
+  return joinAddress([
     street,
     a.suburb ?? a.quarter ?? a.neighbourhood,
     a.city_district ?? a.district ?? a.county,
     a.city ?? a.town ?? a.state,
-  ].filter((p): p is string => !!p)
-  return parts.length ? [...new Set(parts)].join(", ") : null
+  ])
 }
 
 // Per server instance. ~11 m grid: a pin nudged a little re-uses the answer.
-const cache = new Map<string, ReverseGeocode>()
-const CACHE_MAX = 500
+const cache = createCache<ReverseGeocode>(500)
 let queue: Promise<unknown> = Promise.resolve()
 let lastCall = 0
 
@@ -118,7 +97,7 @@ export async function GET(req: NextRequest) {
   let data: NominatimResult
   try {
     const res = await throttled(() =>
-      fetch(url, { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(8000), cache: "no-store" }),
+      fetch(url, { headers: { "User-Agent": GEOCODER_USER_AGENT }, signal: AbortSignal.timeout(8000), cache: "no-store" }),
     )
     if (!res.ok) return errorResponse(502, "Không tra được địa chỉ.")
     data = (await res.json()) as NominatimResult
@@ -130,9 +109,8 @@ export async function GET(req: NextRequest) {
     ? { address: null, placeName: null }
     : {
         address: shortAddress(data.address),
-        placeName: data.name && isSellingPlace(data) ? data.name : null,
+        placeName: data.name && isSellingPlace(data.category, data.type) ? data.name : null,
       }
-  if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value!)
   cache.set(key, result)
   return NextResponse.json(result)
 }

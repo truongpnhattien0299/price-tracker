@@ -134,6 +134,19 @@ export type ReverseGeocode = {
   placeName: string | null
 }
 
+/** BFF `GET /api/geocode/search` (Photon): one suggestion under the map's search box. */
+export type PlaceSuggestion = {
+  id: string
+  /** First line: the place or street name. */
+  name: string
+  /** Second line: street, ward, city — also what goes in the entry's address field. */
+  address: string | null
+  lat: number
+  lng: number
+  /** Set when the place is a shop, market or eatery: becomes the entry's store name. */
+  placeName: string | null
+}
+
 export type CalendarDay = {
   date: string
   count: number
