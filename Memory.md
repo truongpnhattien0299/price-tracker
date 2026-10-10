@@ -88,6 +88,8 @@ Camera-first **image expense diary** (Locket-style UX): open app → camera → 
     - Needs a **dev build** (not Expo Go). Requires `newArchEnabled: true` (already set).
     - Verified: `tsc --noEmit` clean, `expo export --platform ios` clean, dev iOS bundle HTTP 200 / 10.7MB. **Still not run on a device.**
   - **TODO device test:** register→camera, kill/reopen stays logged in, capture→Save → MinIO object under `entries/<userId>/` + `GET /entries` row w/ photoKey+price+coords. Then run on device + commit verified.
+- **Web (`web/`, Next.js 15 + shadcn) — plans 01–05 DONE** (2026-10-10, see `plans/README.md`): BFF auth, React Query dashboard, calendar, entry CRUD + upload, landing.
+  - Landing (plans/05) is static and never invents facts: Pro prices live in `web/src/config/pricing.ts` (`null` → "Sắp công bố", set both → monthly/yearly toggle), store buttons read `NEXT_PUBLIC_APP_STORE_URL` / `NEXT_PUBLIC_PLAY_STORE_URL` (empty → disabled "Sắp có"). Update both when prices are fixed / the app ships. App visuals are JSX mockups (`PhoneMockup`, shared `MonthGrid`), not screenshots.
 - Toolchain: Node v20.19.2, npm 11.6.2, Docker 29.4.2. Mobile: Expo SDK 56, pnpm.
 
 ## Local dev gotchas

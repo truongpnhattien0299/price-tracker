@@ -18,8 +18,8 @@ Kế hoạch phát triển web app (Next.js 15 + shadcn/ui). Mỗi plan là mộ
 | [02](02-react-query-wiring.md) | React Query + nối dashboard với API thật, bỏ mock data | ✅ Xong 2026-10-10 |
 | [03](03-calendar.md) | Calendar: lưới ảnh theo tháng (`/entries/calendar` + batch presigned photo URL) | ✅ Xong 2026-10-10 |
 | [04](04-entry-crud.md) | CRUD entry trên web: thêm / sửa / xoá, upload ảnh, `?entry=` | ✅ Xong 2026-10-10 |
-| 05 | Landing: nội dung thật, ảnh app, link store, giá Pro | ⏳ Làm tiếp, chưa viết |
-| 06 | Theme / brand color | Chưa viết |
+| [05](05-landing.md) | Landing: nội dung thật, ảnh app, link store, giá Pro | ✅ Xong 2026-10-10 |
+| 06 | Theme / brand color | ⏳ Làm tiếp, chưa viết |
 | 07 | Entitlement: trial còn lại, khoá dữ liệu > 3 tháng (cần backend Phase 10) | Chưa viết |
 
 ## Cách verify chung
