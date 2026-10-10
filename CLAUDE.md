@@ -122,7 +122,10 @@ Route groups under `web/src/app/`: `(marketing)` → `/` (landing), `(auth)` →
 
 - Font is Be Vietnam Pro — Geist has no Vietnamese subset. Font CSS variables must sit on `<html>`, because `globals.css` applies `font-sans` there.
 - **Auth is a BFF** (plans/01): browser → same-origin `/api/auth/*` and `/api/backend/[...path]` route handlers → NestJS (server-only `API_URL`). JWTs live only in httpOnly cookies `pt_access` / `pt_refresh`; the proxy refreshes on 401 and clears cookies when refresh fails. Non-GET requests need a same-host `Origin` header (CSRF check) — add `-H 'Origin: http://localhost:3001'` when testing with curl. `src/middleware.ts` gates `/dashboard/*` on cookie presence only.
-- Dashboard pages still render `lib/mock-data.ts` until plans/02 wires them through React Query.
+- **Data layer is TanStack React Query** (plans/02). Layering: `lib/api/endpoints.ts` (plain calls) → `hooks/queries/*` (useQuery/useMutation) → components; components never call endpoints directly. Keys come only from `lib/query/keys.ts`; entry mutations invalidate `entries`, `calendar` and `reports`. Logout calls `queryClient.clear()`. Dashboard pages stay server components (for `metadata`) and render a client `*-view.tsx`.
+- `/reports/*` return plain **numbers** (backend `Number()`s the SQL text), unlike entry `price` which is a Decimal string. `GET /entries` does not include the category relation — resolve names with `useCategoryMap()`.
+- Date ranges are computed in Asia/Ho_Chi_Minh (fixed UTC+7) by `lib/date-range.ts`; backend `to` is inclusive, so ranges end 1 ms before the next period. Entries filters live in the URL (`?search=&category=&from=&to=&page=`, days as `YYYY-MM-DD`), written with `router.replace`.
+- In the Claude browser pane the document is often `hidden`, which pauses React Query retries and fires focus refetches — not an app bug.
 - `next build` shares `.next/` with the dev server — restart `pnpm run dev` after building.
 
 ## Working conventions

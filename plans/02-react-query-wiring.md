@@ -87,16 +87,29 @@ Helper `currentMonthRange()` / `lastNMonthsRange(n)` trả `{ from, to }` dạng
 
 ## Verify
 
-- [ ] Tài khoản mới (0 entry): mọi trang hiện empty state, không lỗi, không NaN.
-- [ ] Tạo vài entry từ mobile hoặc curl → dashboard hiện đúng tổng, số khoản, trung bình. So với `GET /reports/summary` gọi tay.
-- [ ] Entries: search / lọc danh mục / khoảng ngày / đổi trang chạy đúng. URL đổi theo, F5 giữ nguyên filter. Đổi trang không chớp trắng (`keepPreviousData`).
-- [ ] Xoá entry → biến khỏi bảng, overview và reports cập nhật mà không cần F5.
-- [ ] Tắt backend → error state + nút thử lại. Bật lại, bấm thử lại → có dữ liệu.
-- [ ] Để access hết hạn (hoặc xoá `pt_access`) → query vẫn chạy (proxy refresh), không bị đá ra login.
-- [ ] Logout rồi login tài khoản khác → không thấy dữ liệu tài khoản cũ (cache đã clear).
-- [ ] React Query Devtools: key đúng cấu trúc, không có query trùng.
-- [ ] `lib/mock-data.ts` đã bị xoá, `grep -r mock src/` rỗng.
-- [ ] typecheck + lint + build pass.
+Đã chạy 2026-10-10 với 2 tài khoản test (1 rỗng, 1 có 25 entry seed bằng curl, gồm 1 entry `2026-09-30T17:30Z` = 01/10 giờ VN để thử biên tháng).
+
+- [x] Tài khoản mới (0 entry): mọi trang hiện empty state, không lỗi, không NaN.
+- [x] Tạo vài entry từ mobile hoặc curl → dashboard hiện đúng tổng, số khoản, trung bình. So với `GET /reports/summary` gọi tay. (1.044.000 ₫ / 15 khoản, khớp; entry biên tháng tính vào tháng 10.)
+- [x] Entries: search / lọc danh mục / khoảng ngày / đổi trang chạy đúng. URL đổi theo, F5 giữ nguyên filter. Đổi trang không chớp trắng (`keepPreviousData`). Gõ search chỉ bắn 1 request; `?page=` vượt quá tự lùi về trang cuối.
+- [x] Xoá entry → biến khỏi bảng, overview và reports cập nhật mà không cần F5.
+- [x] Tắt backend → error state + nút thử lại (1 lần gọi + 2 retry). Bật lại, bấm thử lại → có dữ liệu.
+- [x] Để access hết hạn (hoặc xoá `pt_access`) → query vẫn chạy (proxy refresh), không bị đá ra login. (Kiểm bằng curl: chỉ gửi `pt_refresh` → 200 + cookie mới.)
+- [x] Logout rồi login tài khoản khác → không thấy dữ liệu tài khoản cũ (cache đã clear).
+- [x] React Query Devtools: key đúng cấu trúc, không có query trùng. (Key chỉ sinh từ `qk`; Devtools chỉ render khi dev.)
+- [x] `lib/mock-data.ts` đã bị xoá, `grep -r mock src/` rỗng.
+- [x] typecheck + lint + build pass.
+- [ ] Nhánh 402/403 (năm là Pro) ở Reports: đã code, **chưa test được** vì backend chưa gate (Phase 10).
+
+### Lệch so với thiết kế
+
+- `groupBy` dùng `ToggleGroup` thay `Tabs` (rule của skill shadcn: tập 2–7 lựa chọn là ToggleGroup; Tabs không có panel thì sai a11y).
+- Xác nhận xoá dùng `AlertDialog` thay `Dialog`.
+- `qk.calendar` là `{ all, month(m) }` cho đồng dạng với `entries` / `reports`.
+- `/reports/*` trả **number**, không phải Decimal string → `types/api.ts` đã sửa theo backend.
+- `GET /entries` không include `category` → bảng tra tên qua `useCategoryMap()`.
+- Trên điện thoại bảng entries ẩn cột Danh mục / Ngày, gộp vào dòng phụ dưới tên sản phẩm.
+- Ô range-middle của `Calendar` gần như không thấy ở dark mode (`bg-muted` trùng nền popover) — style gốc của shadcn, để plan 06.
 
 ## Ngoài phạm vi
 
