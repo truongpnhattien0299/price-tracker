@@ -16,3 +16,13 @@ export function formatDate(iso: string, opts: Intl.DateTimeFormatOptions = { dat
     new Date(iso),
   )
 }
+
+export function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase()
+}

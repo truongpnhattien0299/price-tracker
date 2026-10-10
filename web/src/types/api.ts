@@ -1,5 +1,7 @@
 // Mirrors backend DTOs (DESIGN.md §5). Prisma.Decimal serializes as a string —
 // never parse money into a float for arithmetic; format it for display only.
+// Exception: /reports/* aggregates are converted with Number() server-side, so
+// they arrive as plain numbers.
 
 export type ProSource = "none" | "trial" | "subscription"
 
@@ -70,21 +72,24 @@ export type CalendarDay = {
 export type ReportRange = { from?: string; to?: string }
 
 export type ReportSummary = {
-  totalSpent: string
+  totalSpent: number
   entryCount: number
-  avgPerEntry: string
+  avgPerEntry: number
   currency: string
 }
 
 export type CategoryBreakdown = {
   categoryName: string
-  total: string
+  total: number
+  count: number
   percentage: number
 }
 
-export type TimeSeriesPoint = { period: string; total: string }
+export type GroupBy = "day" | "month" | "year"
 
-export type TopStore = { storeName: string; total: string; count: number }
+export type TimeSeriesPoint = { period: string; total: number }
+
+export type TopStore = { storeName: string; total: number; count: number }
 
 export type ApiError = {
   statusCode: number

@@ -4,6 +4,7 @@ import type {
   CategoryBreakdown,
   Entry,
   EntryQuery,
+  GroupBy,
   Paginated,
   ReportRange,
   ReportSummary,
@@ -49,7 +50,7 @@ export const reportsApi = {
     apiFetch<ReportSummary>("/reports/summary", { query: range }),
   byCategory: (range: ReportRange = {}) =>
     apiFetch<CategoryBreakdown[]>("/reports/by-category", { query: range }),
-  timeSeries: (groupBy: "day" | "month" | "year", range: ReportRange = {}) =>
+  timeSeries: (groupBy: GroupBy, range: ReportRange = {}) =>
     apiFetch<TimeSeriesPoint[]>("/reports/time-series", { query: { groupBy, ...range } }),
   topStores: (range: ReportRange = {}) =>
     apiFetch<TopStore[]>("/reports/top-stores", { query: range }),

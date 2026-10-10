@@ -1,5 +1,6 @@
 "use client"
 
+import { useQueryClient } from "@tanstack/react-query"
 import { ChevronsUpDownIcon, LogOutIcon, SettingsIcon } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -15,21 +16,20 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
+import { Skeleton } from "@/components/ui/skeleton"
+import { useMe } from "@/hooks/queries/use-me"
 import { authApi } from "@/lib/api/endpoints"
-
-// TODO(plan): read the real user from an auth context fed by GET /auth/me.
-const user = { displayName: "Demo User", email: "demo@example.com" }
+import { initials } from "@/lib/format"
 
 export function NavUser() {
   const router = useRouter()
-  const initials = user.displayName
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
+  const queryClient = useQueryClient()
+  const { data: user } = useMe()
 
   async function logout() {
     await authApi.logout().catch(() => undefined)
+    // Drop every cached query so the next account never sees this one's data.
+    queryClient.clear()
     // replace, not push: Back must not return to a dashboard page.
     router.replace("/login")
     router.refresh()
@@ -42,18 +42,25 @@ export function NavUser() {
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton size="lg">
               <Avatar className="size-8 rounded-lg">
-                <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+                <AvatarFallback className="rounded-lg">{user ? initials(user.displayName) : ""}</AvatarFallback>
               </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">{user.displayName}</span>
-                <span className="text-muted-foreground truncate text-xs">{user.email}</span>
-              </div>
+              {user ? (
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-medium">{user.displayName}</span>
+                  <span className="text-muted-foreground truncate text-xs">{user.email}</span>
+                </div>
+              ) : (
+                <div className="flex flex-1 flex-col gap-1">
+                  <Skeleton className="h-3.5 w-24" />
+                  <Skeleton className="h-3 w-32" />
+                </div>
+              )}
               <ChevronsUpDownIcon className="ml-auto" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="top" align="end" className="w-56">
             <DropdownMenuGroup>
-              <DropdownMenuLabel className="truncate">{user.email}</DropdownMenuLabel>
+              <DropdownMenuLabel className="truncate">{user?.email}</DropdownMenuLabel>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
