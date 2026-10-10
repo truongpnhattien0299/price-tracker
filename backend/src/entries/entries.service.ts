@@ -11,6 +11,7 @@ import { paymentRequired } from '../common/entitlement.util';
 import { CreateEntryDto } from './dto/create-entry.dto';
 import { UpdateEntryDto } from './dto/update-entry.dto';
 import { QueryEntriesDto } from './dto/query-entries.dto';
+import { MapQueryDto } from './dto/map-query.dto';
 
 export interface CalendarCell {
   date: string;
@@ -26,12 +27,40 @@ export type LockedEntry = Pick<Entry, 'id' | 'purchasedAt' | 'blurhash'> & {
   locked: true;
 };
 
+export interface MapPoint {
+  id: string;
+  lat: number;
+  lng: number;
+  photoKey: string | null;
+  blurhash: string | null;
+  purchasedAt: Date;
+  price: Prisma.Decimal;
+  currency: string;
+  productName: string | null;
+  storeName: string | null;
+  categoryId: string | null;
+}
+
+// A map draws every point at once; past this the client is told to narrow the range.
+const MAP_POINT_CAP = 5000;
+
 function present(entry: Entry, access: Access): (Entry & { locked: false }) | LockedEntry {
   if (isLocked(access, entry.purchasedAt)) {
     const { id, purchasedAt, blurhash } = entry;
     return { id, purchasedAt, blurhash, locked: true };
   }
   return { ...entry, locked: false };
+}
+
+// A point needs both halves, sent together: setting or clearing only one would
+// leave a row with half a coordinate.
+function assertCoordinatePair(dto: Pick<CreateEntryDto, 'latitude' | 'longitude'>) {
+  const lat = dto.latitude;
+  const lng = dto.longitude;
+  if (lat === undefined && lng === undefined) return;
+  if (lat === undefined || lng === undefined || (lat === null) !== (lng === null)) {
+    throw new BadRequestException('latitude and longitude must be set or cleared together');
+  }
 }
 
 @Injectable()
@@ -43,6 +72,7 @@ export class EntriesService {
   ) {}
 
   async create(userId: string, dto: CreateEntryDto) {
+    assertCoordinatePair(dto);
     await this.entitlement.assertCanCreate(userId);
     await this.assertCategory(dto.categoryId);
     if (dto.photoKey) this.uploads.assertOwnKey(userId, dto.photoKey);
@@ -143,6 +173,7 @@ export class EntriesService {
         throw new BadRequestException(`${field} cannot be null`);
       }
     }
+    assertCoordinatePair(dto);
     if (dto.categoryId !== undefined) await this.assertCategory(dto.categoryId);
     if (dto.photoKey) this.uploads.assertOwnKey(userId, dto.photoKey);
 
@@ -221,6 +252,76 @@ export class EntriesService {
       const locked = isLocked(access, firstAt);
       return { ...cell, coverPhotoKey: locked ? null : cell.coverPhotoKey, locked };
     });
+  }
+
+  // Every point with coordinates, newest first (plans/08). A Free user's range
+  // is clamped to the history window rather than refused: the map opens on
+  // "all time", and older points (their location is Pro data too) are only counted.
+  async mapPoints(userId: string, q: MapQueryDto) {
+    const access = await this.entitlement.access(userId);
+    const from =
+      access.historyFrom && (!q.from || q.from < access.historyFrom)
+        ? access.historyFrom
+        : q.from;
+    const located: Prisma.EntryWhereInput = {
+      userId,
+      latitude: { not: null },
+      longitude: { not: null },
+      ...(q.category ? { categoryId: q.category } : {}),
+    };
+    const where: Prisma.EntryWhereInput = {
+      ...located,
+      ...(from || q.to
+        ? {
+            purchasedAt: {
+              ...(from ? { gte: from } : {}),
+              ...(q.to ? { lte: q.to } : {}),
+            },
+          }
+        : {}),
+    };
+
+    const [rows, lockedCount] = await Promise.all([
+      this.prisma.entry.findMany({
+        where,
+        orderBy: { purchasedAt: 'desc' },
+        take: MAP_POINT_CAP + 1,
+      }),
+      // Only what the requested range would have shown without the window.
+      access.historyFrom && from !== q.from
+        ? this.prisma.entry.count({
+            where: {
+              ...located,
+              purchasedAt: {
+                lt: access.historyFrom,
+                ...(q.from ? { gte: q.from } : {}),
+                ...(q.to ? { lte: q.to } : {}),
+              },
+            },
+          })
+        : 0,
+    ]);
+
+    // Still routed through present() so every entry read obeys one lock rule.
+    const points: MapPoint[] = [];
+    for (const row of rows.slice(0, MAP_POINT_CAP)) {
+      const e = present(row, access);
+      if (e.locked || e.latitude === null || e.longitude === null) continue;
+      points.push({
+        id: e.id,
+        lat: e.latitude.toNumber(),
+        lng: e.longitude.toNumber(),
+        photoKey: e.photoKey,
+        blurhash: e.blurhash,
+        purchasedAt: e.purchasedAt,
+        price: e.price,
+        currency: e.currency,
+        productName: e.productName,
+        storeName: e.storeName,
+        categoryId: e.categoryId,
+      });
+    }
+    return { points, truncated: rows.length > MAP_POINT_CAP, lockedCount };
   }
 
   private async assertCategory(categoryId?: string | null) {

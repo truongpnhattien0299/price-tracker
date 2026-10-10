@@ -15,6 +15,7 @@ import { CreateEntryDto } from './dto/create-entry.dto';
 import { UpdateEntryDto } from './dto/update-entry.dto';
 import { QueryEntriesDto } from './dto/query-entries.dto';
 import { CalendarQueryDto } from './dto/calendar-query.dto';
+import { MapQueryDto } from './dto/map-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthUser } from '../auth/strategies/jwt.strategy';
@@ -34,10 +35,15 @@ export class EntriesController {
     return this.entries.findAll(user.userId, query);
   }
 
-  // Declared before :id so "calendar" isn't captured as an id param.
+  // Declared before :id so "calendar" / "map" aren't captured as an id param.
   @Get('calendar')
   calendar(@CurrentUser() user: AuthUser, @Query() q: CalendarQueryDto) {
     return this.entries.calendar(user.userId, q.month, q.tz);
+  }
+
+  @Get('map')
+  map(@CurrentUser() user: AuthUser, @Query() q: MapQueryDto) {
+    return this.entries.mapPoints(user.userId, q);
   }
 
   @Get(':id')
