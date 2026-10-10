@@ -34,7 +34,7 @@ pnpm run build                   # nest build
 pnpm exec prisma migrate dev     # create + apply migration
 pnpm exec prisma generate        # if @prisma/client is missing after install
 pnpm exec prisma studio
-docker compose up -d minio minio-init   # local S3 (MinIO :9000 API / :9001 console)
+docker compose up -d minio minio-init   # local storage (MinIO :9000 API / :9001 console)
 ```
 
 Mobile (`cd mobile`):
@@ -68,7 +68,7 @@ curl -s -o /dev/null -w '%{http_code}\n' 'http://localhost:8081/node_modules/exp
 Both packages need a gitignored `.env`; `.env.example` in each is the reference.
 
 - Backend DB is a **shared Postgres container on host port 2345**, not managed by this repo's `docker-compose.yml` (the `db` service was removed). Inspect it via Prisma from the host — `docker exec` into that container is blocked.
-- Local S3 is MinIO. `AWS_S3_ENDPOINT` + `AWS_S3_FORCE_PATH_STYLE` exist only for MinIO; **omit both in production** so the SDK falls back to the EC2 IAM role credentials chain.
+- Photo storage is **Cloudflare R2** in production and **MinIO** locally, both through the S3 API (`@aws-sdk/client-s3`). Config is the provider-neutral `STORAGE_*` set (endpoint + keys always explicit — R2 has no IAM role chain); do not reintroduce `AWS_*` names, other AWS SDK clients would pick them up. Bucket/token/CORS setup: `docs/storage-r2.md`.
 - `EXPO_PUBLIC_API_URL` must not be `localhost` for a real device — use the dev machine's LAN IP (Android emulator: `10.0.2.2`, iOS simulator: `localhost`).
 
 ## Backend architecture
@@ -81,7 +81,7 @@ Invariants that cut across the code:
 - **Money is `Prisma.Decimal`** (`@db.Decimal(12,2)`), never a float. Coordinates likewise.
 - **Auth is stateless**: JWT access 15m + refresh 7d, no refresh tokens stored in the DB. Hashing uses `bcryptjs` (pure JS, drop-in for the `bcrypt` named in DESIGN.md). `passwordHash` is never returned.
 - **Entitlement is computed, not stored**: `isPro(user)` in `common/entitlement.util.ts` is `proExpiresAt != null && now < proExpiresAt`. No cron downgrade job. Registration grants a 30-day trial (`proSource='trial'`).
-- **S3: store `photoKey` only** (`entries/<userId>/<uuid>.<ext>`), never a full URL. The client PUTs directly to S3 with a backend-issued presigned URL (5-min expiry); the backend never proxies image bytes. `GET /uploads/photo-url` rejects keys not prefixed with the caller's `entries/<userId>/`. Deleting an entry best-effort deletes the S3 object.
+- **Storage: store `photoKey` only** (`entries/<userId>/<uuid>.<ext>`), never a full URL. The client PUTs directly to R2 with a backend-issued presigned URL (5-min expiry); the backend never proxies image bytes. `GET /uploads/photo-url` rejects keys not prefixed with the caller's `entries/<userId>/`. Deleting an entry best-effort deletes the S3 object.
 - **Timestamps are stored UTC but grouped by user-local timezone** for calendar and time-series: raw SQL `purchased_at AT TIME ZONE 'UTC' AT TIME ZONE $tz`, default `Asia/Ho_Chi_Minh`. `purchasedAt` is deliberately separate from `createdAt`.
 - **Reports aggregate in Postgres** (`SUM`/`GROUP BY`), never by pulling rows. They use `$queryRawUnsafe` with `$N` params (`userId` always `$1::uuid`) plus a `buildDateWhere()` helper — Prisma's `$queryRaw` template tag generates wrong `$N` numbering when clauses are built conditionally, so do not switch these back to tagged templates.
 - Default categories (8 Vietnamese) are seeded idempotently on boot in `categories.service.ts`.
@@ -95,7 +95,7 @@ Known limitation: `search` / `store` filters use Prisma `contains insensitive`, 
 - `app/_layout.tsx` composes providers (SafeArea → React Query → `AuthProvider`) and gates navigation on auth state via `useSegments`, redirecting between `/(auth)/login` and `/`.
 - `src/api/client.ts` is the single axios instance: bearer-token request interceptor plus a **single-flight 401 → refresh → retry** response interceptor. It calls `setUnauthorizedHandler` (registered by the auth store) instead of importing the store, to avoid a circular import. Refresh uses raw `axios`, not `api`, so it cannot recurse.
 - Tokens live in `expo-secure-store` (`src/lib/tokens.ts`).
-- Capture flow (`app/index.tsx` → `app/capture.tsx` as a modal): take photo → compress (`src/lib/image.ts`, JPEG 0.7 / width 1080) → `POST /uploads/presign` → **raw `fetch` PUT to S3 where the `Content-Type` must match the signed type exactly** → `POST /entries`. GPS is captured on sheet mount (i.e. at capture time). Mutations invalidate the `entries` and `calendar` query keys.
+- Capture flow (`app/index.tsx` → `app/capture.tsx` as a modal): take photo → compress (`src/lib/image.ts`, JPEG 0.7 / width 1080) → `POST /uploads/presign` → **raw `fetch` PUT to storage where the `Content-Type` must match the signed type exactly** → `POST /entries`. GPS is captured on sheet mount (i.e. at capture time). Mutations invalidate the `entries` and `calendar` query keys.
 
 ### Camera
 
@@ -125,7 +125,7 @@ Route groups under `web/src/app/`: `(marketing)` → `/` (landing), `(auth)` →
 - **Data layer is TanStack React Query** (plans/02). Layering: `lib/api/endpoints.ts` (plain calls) → `hooks/queries/*` (useQuery/useMutation) → components; components never call endpoints directly. Keys come only from `lib/query/keys.ts`; entry mutations invalidate `entries`, `calendar` and `reports`. Logout calls `queryClient.clear()`. Dashboard pages stay server components (for `metadata`) and render a client `*-view.tsx`.
 - `/reports/*` return plain **numbers** (backend `Number()`s the SQL text), unlike entry `price` which is a Decimal string. `GET /entries` does not include the category relation — resolve names with `useCategoryMap()`.
 - Date ranges are computed in Asia/Ho_Chi_Minh (fixed UTC+7) by `lib/date-range.ts`; backend `to` is inclusive, so ranges end 1 ms before the next period. Entries filters live in the URL (`?search=&category=&from=&to=&page=`, days as `YYYY-MM-DD`), written with `router.replace`.
-- **Photos**: S3 objects are private. Grids fetch presigned GET URLs in one `POST /uploads/photo-urls` (`usePhotoUrls`, which also seeds each key's `usePhotoUrl` cache) — never one request per photo, because the API throttles 60 req/min **per IP** and behind the BFF every user shares the Next server's IP. Render with `components/shared/photo.tsx` (plain `<img>`; signed URLs expire in 5 min, so `next/image` optimisation is useless).
+- **Photos**: storage objects are private. Grids fetch presigned GET URLs in one `POST /uploads/photo-urls` (`usePhotoUrls`, which also seeds each key's `usePhotoUrl` cache) — never one request per photo, because the API throttles 60 req/min **per IP** and behind the BFF every user shares the Next server's IP. Render with `components/shared/photo.tsx` (plain `<img>`; signed URLs expire in 5 min, so `next/image` optimisation is useless).
 - Calendar (plans/03): `?month=YYYY-MM&day=YYYY-MM-DD` in the URL, Monday-first grid from `monthGrid()`, cover = first photo of the VN day. No money on the calendar (DESIGN.md §8).
 - In the Claude browser pane the document is often `hidden` (e.g. another tab such as the `api` preview is fronted), which pauses React Query retries, fires focus refetches, and blocks `requestAnimationFrame` so `<Suspense>` content may not render until a screenshot — not an app bug. Front the tab with `tabs_select`.
 - `next build` shares `.next/` with the dev server — restart `pnpm run dev` after building.

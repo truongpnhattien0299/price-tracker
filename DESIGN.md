@@ -13,7 +13,7 @@
 App là một **nhật ký chi tiêu bằng hình ảnh**, mặc lớp áo trải nghiệm **camera-first kiểu Locket**: mở app vào thẳng camera, chụp nhanh, vuốt lên xem lịch ảnh theo tháng. Dùng một mình (có đăng nhập, data riêng), **không có** tính năng xã hội/chia sẻ.
 
 ```
-Mở app → CAMERA → Chụp → Nhập giá (+ thông tin) → Lưu (upload S3 + DB) → quay lại Camera
+Mở app → CAMERA → Chụp → Nhập giá (+ thông tin) → Lưu (upload R2 + DB) → quay lại Camera
                                                   ↘ Vuốt lên → Lịch tháng → Chi tiết ngày → Chi tiết entry
                                                   ↘ Tab Thống kê (ngày / tháng / năm)
 ```
@@ -32,7 +32,7 @@ Mở app → CAMERA → Chụp → Nhập giá (+ thông tin) → Lưu (upload S
 |---|---|
 | Auth (JWT access + refresh) | Đăng nhập mạng xã hội (OAuth) |
 | CRUD entries (ảnh + giá + vị trí) | Offline-first / sync engine |
-| Upload ảnh lên S3 (pre-signed URL) | Chia sẻ / cộng đồng so giá |
+| Upload ảnh lên Cloudflare R2 (pre-signed URL) | Chia sẻ / cộng đồng so giá |
 | GPS tự động + chọn vị trí trên bản đồ | Push notification |
 | Báo cáo & biểu đồ chi tiêu | Multi-currency conversion realtime |
 | Lọc/tìm theo thời gian, danh mục | CI/CD pipeline tự động (có thể thêm sau) |
@@ -58,8 +58,8 @@ flowchart TB
             API[NestJS API<br/>REST + JWT]
         end
         RDS[(RDS PostgreSQL)]
-        S3[(S3 Bucket<br/>ảnh sản phẩm)]
     end
+    R2[(Cloudflare R2<br/>ảnh sản phẩm)]
 
     UI --> HTTP
     Cam --> UI
@@ -69,15 +69,15 @@ flowchart TB
     HTTP -->|REST/JSON + Bearer JWT| API
     API -->|Prisma| RDS
     HTTP -.->|1. xin pre-signed URL| API
-    HTTP ==>|2. PUT ảnh trực tiếp| S3
-    API -.->|cấp pre-signed URL| S3
+    HTTP ==>|2. PUT ảnh trực tiếp| R2
+    API -.->|cấp pre-signed URL| R2
 ```
 
 **Giải thích các quyết định chính:**
 
 - **App gọi REST API**, không gọi thẳng DB → tách biệt rõ client/server, bảo mật.
-- **Ảnh upload thẳng từ app lên S3** qua *pre-signed URL* do backend cấp. Backend **không** làm trung gian truyền ảnh → tiết kiệm băng thông server, không phình bộ nhớ/RAM của EC2, scale tốt. (Điểm kỹ thuật hay để trình bày.)
-- **Backend chỉ lưu `photo_key`** (đường dẫn object trong S3), không lưu binary ảnh trong DB.
+- **Ảnh upload thẳng từ app lên Cloudflare R2** (API tương thích S3) qua *pre-signed URL* do backend cấp. Backend **không** làm trung gian truyền ảnh → tiết kiệm băng thông server, không phình bộ nhớ/RAM của EC2, scale tốt. (Điểm kỹ thuật hay để trình bày.)
+- **Backend chỉ lưu `photo_key`** (đường dẫn object trong bucket R2), không lưu binary ảnh trong DB.
 
 ---
 
@@ -93,7 +93,7 @@ flowchart TB
 | DB | **PostgreSQL** | Quan hệ rõ, mạnh về aggregate (GROUP BY) phục vụ báo cáo |
 | Auth | **JWT (access + refresh)** + bcrypt | Stateless, chuẩn ngành, dễ giải thích |
 | Validation | **class-validator + class-transformer** | Tích hợp sẵn NestJS, validate DTO sạch sẽ |
-| Storage | **AWS S3** | Lưu ảnh chuẩn, rẻ, pre-signed URL |
+| Storage | **Cloudflare R2** (API S3) | Tương thích S3 nên dùng nguyên `@aws-sdk/client-s3` + pre-signed URL; **không tính phí egress** (app tải ảnh nhiều: lịch, chi tiết), free tier 10 GB. Local dev dùng MinIO |
 | Deploy | **Docker → EC2** (+ RDS) | Đơn giản, dễ hiểu, dễ giải thích cho bản đầu |
 
 ---
@@ -150,7 +150,7 @@ erDiagram
 
 - **`id` dùng UUID** thay vì auto-increment → không lộ số lượng record, an toàn hơn khi public qua API.
 - **`price` dùng `decimal`** (không dùng float) → tránh sai số dấu phẩy động với tiền tệ. *(Điểm hay để nói khi phỏng vấn.)*
-- **`photo_key`**: chỉ lưu key S3 (vd. `entries/<user_id>/<uuid>.jpg`), không lưu full URL → linh hoạt khi đổi bucket/CDN.
+- **`photo_key`**: chỉ lưu object key (vd. `entries/<user_id>/<uuid>.jpg`), không lưu full URL → linh hoạt khi đổi bucket/CDN.
 - **`blurhash`**: chuỗi ngắn (~20–30 ký tự) tạo lúc upload, render ra **ảnh mờ** placeholder. Dùng cho 2 việc: (a) hiển thị mượt trong lúc ảnh thật đang tải; (b) làm "lớp che" cho entry bị khóa ở gói Free (mục 14.6) — gửi blurhash thay vì ảnh thật nên **không lộ nội dung**.
 - **`purchased_at` tách khỏi `created_at`**: ngày mua thực tế có thể khác ngày nhập liệu → báo cáo chi tiêu chính xác theo thời điểm mua.
 - **`category_id` nullable** + bảng `CATEGORY` có sẵn danh mục mặc định (rau củ, thịt cá, đồ khô...) → vừa chuẩn hóa vừa cho phép linh hoạt.
@@ -183,7 +183,7 @@ Base URL: `/api/v1`. Tất cả endpoint (trừ auth) yêu cầu header `Authori
 | GET | `/entries/:id` | Chi tiết 1 entry |
 | POST | `/entries` | Tạo entry: `{ productName, price, currency, unit, categoryId, photoKey, latitude, longitude, address, storeName, note, purchasedAt }` |
 | PATCH | `/entries/:id` | Cập nhật |
-| DELETE | `/entries/:id` | Xóa (kèm xóa object S3) |
+| DELETE | `/entries/:id` | Xóa (kèm xóa object trên R2) |
 
 ### 5.3. Upload (ảnh)
 
@@ -221,7 +221,7 @@ Base URL: `/api/v1`. Tất cả endpoint (trừ auth) yêu cầu header `Authori
 
 | Method | Endpoint | Mô tả |
 |---|---|---|
-| POST | `/ocr/parse` | Body `{ photoKey }` → `{ price?, productName?, rawText }`. Backend gọi **AWS Textract** đọc thẳng object trong S3, áp heuristic tách giá/tên. **Bọc `EntitlementGuard` (chỉ Pro).** Kết quả chỉ để **pre-fill**, user sửa được. |
+| POST | `/ocr/parse` | Body `{ photoKey }` → `{ price?, productName?, rawText }`. Backend tải object từ R2 rồi gửi bytes cho **AWS Textract**, áp heuristic tách giá/tên. **Bọc `EntitlementGuard` (chỉ Pro).** Kết quả chỉ để **pre-fill**, user sửa được. |
 
 ---
 
@@ -267,7 +267,7 @@ sequenceDiagram
 sequenceDiagram
     participant App
     participant API as NestJS API
-    participant S3
+    participant S3 as Cloudflare R2
 
     Note over App: User chụp ảnh → nén bằng<br/>expo-image-manipulator
     App->>API: POST /uploads/presign {contentType, ext}
@@ -280,10 +280,10 @@ sequenceDiagram
     API->>API: lưu entry với photoKey
     API-->>App: entry đã tạo
 
-    Note over App: Khi hiển thị ảnh:<br/>xin pre-signed GET URL hoặc dùng CloudFront (sau)
+    Note over App: Khi hiển thị ảnh:<br/>xin pre-signed GET URL (batch `POST /uploads/photo-urls`)
 ```
 
-**Tại sao không upload qua server?** Truyền ảnh qua backend tốn RAM/băng thông EC2, dễ nghẽn khi nhiều request. Upload thẳng lên S3 giảm tải server và scale tốt hơn — đồng thời S3 lo độ bền dữ liệu.
+**Tại sao không upload qua server?** Truyền ảnh qua backend tốn RAM/băng thông EC2, dễ nghẽn khi nhiều request. Upload thẳng lên R2 giảm tải server và scale tốt hơn — đồng thời R2 lo độ bền dữ liệu.
 
 ---
 
@@ -356,7 +356,7 @@ sequenceDiagram
     GPS-->>App: vị trí → hiện chip "📍 gần X"
     Note over App: tên SP (bỏ qua được) •<br/>danh mục = chip 1 chạm, nhớ cái vừa dùng •<br/>cửa hàng = gợi ý theo vị trí/gần đây
     U->>App: Chạm "Lưu"
-    App->>App: nén ảnh → presign → PUT S3 → POST /entries
+    App->>App: nén ảnh → presign → PUT R2 → POST /entries
     App->>U: về Camera, sẵn sàng chụp tiếp
 ```
 
@@ -389,7 +389,7 @@ backend/
 │   ├── users/
 │   ├── entries/
 │   ├── categories/
-│   ├── uploads/       # logic pre-signed URL (S3)
+│   ├── uploads/       # logic pre-signed URL (R2, API S3)
 │   ├── reports/       # các endpoint aggregate
 │   ├── common/        # guards, interceptors, filters, decorators
 │   ├── prisma/        # PrismaService + module
@@ -435,23 +435,23 @@ flowchart TB
 
     Internet([📱 App]) -->|HTTPS| Nginx
     Container -->|5432| RDS
-    Container -->|SDK| S3[(S3 bucket)]
+    Container -->|S3 API| R2[(Cloudflare R2 bucket)]
 ```
 
 **Các bước deploy (sẽ chi tiết trong tài liệu hướng dẫn riêng):**
 1. Build Docker image, push lên **AWS ECR**.
 2. Tạo EC2 instance (Amazon Linux / Ubuntu), cài Docker.
 3. Tạo RDS PostgreSQL (free tier `db.t3.micro`), cấu hình Security Group cho EC2 truy cập.
-4. Tạo S3 bucket + IAM role/policy cho EC2 ký pre-signed URL.
-5. Pull image về EC2, chạy container, set env (DB URL, JWT secret, AWS creds qua IAM role).
+4. Tạo bucket Cloudflare R2 + API token *Object Read & Write* chỉ cho bucket đó (xem `docs/storage-r2.md`).
+5. Pull image về EC2, chạy container, set env (DB URL, JWT secret, `STORAGE_*` của R2).
 6. Nginx reverse proxy + HTTPS (Let's Encrypt / certbot) trước container.
 7. Trỏ domain (nếu có).
 
-**Lưu ý chi phí:** EC2 `t2.micro` + RDS `db.t3.micro` nằm trong **AWS Free Tier 12 tháng**. S3 chi phí không đáng kể ở mức demo. Sau free tier sẽ phát sinh phí — nhớ tắt instance khi không demo.
+**Lưu ý chi phí:** EC2 `t2.micro` + RDS `db.t3.micro` nằm trong **AWS Free Tier 12 tháng**. R2 miễn phí tới 10 GB và không tính egress. Sau free tier sẽ phát sinh phí — nhớ tắt instance khi không demo.
 
 **Bảo mật hạ tầng:**
 - RDS đặt trong subnet private, chỉ EC2 truy cập (không expose ra internet).
-- Dùng **IAM role** gắn vào EC2 thay vì hardcode AWS access key.
+- Key R2 là token **chỉ quyền Object Read & Write trên đúng 1 bucket**, để trong env/SSM, không commit. R2 không có IAM role như S3 nên luôn cần key tường minh.
 - Secrets (JWT secret, DB password) qua biến môi trường / SSM Parameter Store, **không commit vào git**.
 
 ---
@@ -480,13 +480,13 @@ flowchart TB
 | **0. Setup** | Khởi tạo NestJS, Prisma, Postgres qua docker-compose | Project chạy local, kết nối DB |
 | **1. Auth** | Register/Login/Refresh, JWT, guards, bcrypt | Đăng nhập hoạt động, test bằng Postman |
 | **2. Entries** | CRUD + filter + phân trang + endpoint `/entries/calendar` | Quản lý dữ liệu giá + dữ liệu cho lịch |
-| **3. Uploads** | Pre-signed URL S3 | Upload ảnh hoạt động |
+| **3. Uploads** | Pre-signed URL (R2, API S3) | Upload ảnh hoạt động |
 | **4. Reports** | Endpoint aggregate (summary, by-category, time-series ngày/tháng/năm, top-stores) | API thống kê sẵn sàng |
 | **5. Mobile MVP** | Auth + **Camera-first** + sheet nhập liệu + GPS + lưu | App chụp & ghi giá được |
 | **6. Mobile Lịch** | Lịch tháng (ảnh đại diện) + chi tiết ngày + chi tiết entry | Xem lại theo lịch hoàn chỉnh |
 | **7. Mobile Thống kê** | Tab Ngày/Tháng/Năm + biểu đồ | Tính năng trọng tâm hoàn chỉnh |
 | **8. Mobile Map** | Chọn vị trí tùy chỉnh trên map | Hoàn thiện vị trí |
-| **9. Deploy** | Docker + EC2 + RDS + S3 + Nginx HTTPS | App chạy thật trên AWS (bàn sau) |
+| **9. Deploy** | Docker + EC2 + RDS + R2 + Nginx HTTPS | App chạy thật trên AWS (bàn sau) |
 | **10. Freemium** | Trường entitlement + `EntitlementGuard` + trần entry + paywall + RevenueCat/IAP + webhook | Có thể thu phí (cần build thật để test IAP) |
 | **11. (Tùy chọn)** | OCR tự động điền (Textract, Pro), CSV/PDF export, ngân sách & cảnh báo, đa tiền tệ, CI/CD, offline, widget | Nâng cao |
 | **12. AI mở rộng** | Phân loại tự động, insight & hỏi đáp NL, gom sản phẩm (pgvector) — xem mục 15 | Khác biệt hóa sản phẩm |
@@ -619,13 +619,14 @@ User chụp ảnh có sẵn giá/tên (vd. tem giá, hóa đơn) → app **tự 
 sequenceDiagram
     participant App
     participant API as NestJS API
-    participant S3
+    participant S3 as Cloudflare R2
     participant TX as AWS Textract
 
     App->>S3: PUT ảnh (luồng upload sẵn có)
     App->>API: POST /ocr/parse { photoKey }
     API->>API: EntitlementGuard → chỉ Pro
-    API->>TX: đọc text từ object S3
+    API->>S3: GetObject (bytes ảnh, ~200 KB)
+    API->>TX: DetectDocumentText { Bytes }
     TX-->>API: các dòng text + vị trí
     API->>API: heuristic: regex bắt giá, đoán tên SP
     API-->>App: { price?, productName?, rawText }
@@ -633,8 +634,8 @@ sequenceDiagram
 ```
 
 **Các điểm thiết kế:**
-- **Vì sao để Pro:** OCR đám mây có **chi phí biên thật** mỗi lần gọi → gating Pro đúng với "value metric" (giống trần entry bảo vệ chi phí S3). Nên cân nhắc thêm **fair-use cap** ngay cả với Pro để tránh hóa đơn Textract tăng vọt.
-- **Server-side, không gọi thẳng từ app:** giữ AWS creds an toàn, kiểm tra quyền & chi phí tập trung, chống lạm dụng. Textract **đọc thẳng từ S3** nên không phải gửi lại ảnh.
+- **Vì sao để Pro:** OCR đám mây có **chi phí biên thật** mỗi lần gọi → gating Pro đúng với "value metric" (giống trần entry bảo vệ chi phí lưu trữ). Nên cân nhắc thêm **fair-use cap** ngay cả với Pro để tránh hóa đơn Textract tăng vọt.
+- **Server-side, không gọi thẳng từ app:** giữ AWS creds an toàn, kiểm tra quyền & chi phí tập trung, chống lạm dụng. Ảnh nằm trên R2 nên Textract **không** đọc thẳng được (chỉ đọc S3): backend tải bytes từ R2 rồi gửi `Bytes` (ảnh đã nén ~200 KB, dưới giới hạn 5 MB) — client vẫn không phải gửi lại ảnh.
 - **Chỉ hỗ trợ, luôn cho sửa:** OCR hay đọc sai (font, ánh sáng, tiền tệ). Luôn pre-fill rồi để user xác nhận — không tự lưu. Thực tế **giá** (bắt bằng regex số/tiền tệ) đáng tin hơn **tên sản phẩm** (khó đoán) — nên đặt kỳ vọng tên SP là "best-effort".
 - **Phương án giảm chi phí về sau:** có thể chuyển sang **OCR on-device** (ML Kit / Apple Vision) — *miễn phí*, chạy trên máy, không tốn chi phí biên; đổi lại độ chính xác kém ổn định hơn và cần dev build. Khi đó OCR vẫn có thể giữ là điểm Pro (giá trị tiện ích) dù không còn tốn phí.
 - **Thêm vào stack:** mục này bổ sung **AWS Textract** vào hạ tầng (cùng hệ AWS, nhất quán).

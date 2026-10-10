@@ -17,14 +17,14 @@ Camera-first **image expense diary** (Locket-style UX): open app → camera → 
 - Backend: **NestJS + TS**, **Prisma** ORM, **PostgreSQL**.
 - Auth: JWT access (15m) + refresh (7d), bcrypt (cost ≥10).
 - Validation: class-validator + class-transformer (DTO).
-- Storage: AWS S3 (presigned URLs).
-- Deploy (later): Docker → EC2 + RDS + S3 + Nginx HTTPS; ECR registry; GitHub Actions CI/CD last.
+- Storage: **Cloudflare R2** via its S3 API (presigned URLs, `@aws-sdk/client-s3`). Switched from AWS S3 on 2026-10-10 (no egress fees). Local dev = MinIO. Setup: [docs/storage-r2.md](docs/storage-r2.md).
+- Deploy (later): Docker → EC2 + RDS + R2 + Nginx HTTPS; ECR registry; GitHub Actions CI/CD last.
 
 ## Key technical decisions (remember these)
 
 - **UUID** primary keys (not auto-increment) — don't leak row counts.
 - `price` = **Decimal** (`@db.Decimal(12,2)`), never float — money precision.
-- S3: store **`photo_key` only** (e.g. `entries/<userId>/<uuid>.jpg`), not full URL. Client uploads **direct to S3** via backend-issued **presigned PUT URL** (5-min expiry); backend never proxies image bytes.
+- Storage: store **`photo_key` only** (e.g. `entries/<userId>/<uuid>.jpg`), not full URL. Client uploads **direct to R2** via backend-issued **presigned PUT URL** (5-min expiry); backend never proxies image bytes.
 - **`blurhash`** stored per entry: smooth placeholder + used as the Free-tier "lock cover" (send blurhash, not real image).
 - **Entitlement computed dynamically**: `isPro = proExpiresAt != null && now < proExpiresAt`. No cron downgrade. `proSource` enum = `none | trial | subscription`.
 - New user gets **1-month free trial** (server-granted at register, no card, no IAP). Subscription via RevenueCat webhook later.
@@ -33,11 +33,11 @@ Camera-first **image expense diary** (Locket-style UX): open app → camera → 
 - `purchased_at` separate from `created_at` (real purchase date vs entry date).
 - Reports: **push aggregation down to Postgres** (GROUP BY/SUM), don't pull rows to client.
 - Free tier: ~40-50 entries/month soft cap + only last **3 months** visible (older = blur/lock, never deleted). Enforced **server-side** (don't trust client). `EntitlementGuard` (NestJS) gates Pro endpoints; over-cap create → `402`.
-- OCR (Pro, later) = AWS Textract reads S3 object → prefill only, user edits.
+- OCR (Pro, later) = backend GETs the R2 object, sends bytes to AWS Textract (Textract can't read R2 directly) → prefill only, user edits.
 
 ## Roadmap (DESIGN.md §13) — backend-first principle
 
-0 Setup · 1 Auth · 2 Entries CRUD+calendar · 3 Uploads(S3 presign) · 4 Reports · 5 Mobile MVP(camera) · 6 Mobile calendar · 7 Mobile stats · 8 Mobile map · 9 Deploy · 10 Freemium · 11 OCR/export/etc · 12 AI.
+0 Setup · 1 Auth · 2 Entries CRUD+calendar · 3 Uploads(presign, R2) · 4 Reports · 5 Mobile MVP(camera) · 6 Mobile calendar · 7 Mobile stats · 8 Mobile map · 9 Deploy · 10 Freemium · 11 OCR/export/etc · 12 AI.
 
 ## Locked scope decisions (this session)
 
@@ -53,13 +53,14 @@ Camera-first **image expense diary** (Locket-style UX): open app → camera → 
   - Entries CRUD: `POST/GET/GET :id/PATCH/DELETE /entries`. Filters `page,limit,category,from,to,search,store` + pagination meta `{page,limit,total,totalPages}`. Ownership → 404 on foreign id. `price`→`Prisma.Decimal`. `categoryId` validated (BadRequest if invalid).
   - `GET /entries/calendar?month=YYYY-MM&tz=` → `[{date,count,coverPhotoKey}]`, grouped by **local day** via raw SQL `purchased_at AT TIME ZONE 'UTC' AT TIME ZONE $tz` (tz default `Asia/Ho_Chi_Minh`); cover = first photo of day. Verified.
   - **Known limit**: `search`/`store` use Prisma `contains insensitive` = diacritic-literal (`muống`≠`muong`). Diacritic-insensitive needs Postgres `unaccent` ext — defer.
-- **Phase 3 (Uploads/S3) — DONE.** [uploads.service.ts](backend/src/uploads/uploads.service.ts) — `@aws-sdk/client-s3` + presigner.
+- **Phase 3 (Uploads/storage) — DONE.** [uploads.service.ts](backend/src/uploads/uploads.service.ts) — `@aws-sdk/client-s3` + presigner.
   - `POST /uploads/presign {contentType,ext}` → `{uploadUrl, photoKey}` (presigned PUT, 5-min). photoKey = `entries/<userId>/<uuid>.<ext>`. contentType/ext whitelisted (jpeg/png/webp) → 400 otherwise.
   - `GET /uploads/photo-url?key=` → `{url}` (presigned GET, 5-min). Rejects keys not prefixed `entries/<userId>/` → 403 (ownership). Free-tier lock (DESIGN §14.6) deferred to Phase 10.
   - `POST /uploads/photo-urls` `{keys[]}` (1–100, unique) → `{urls:{[key]:url}}` — batch of the above, same 403 rule for any foreign key. Added for the web calendar (plans/03) because the 60 req/min throttle is per IP and the web BFF puts all users on one IP. Mobile calendar should use it too.
-  - S3 client config-driven: `AWS_S3_ENDPOINT`+`AWS_S3_FORCE_PATH_STYLE` for MinIO local dev; omit both in prod → SDK default creds chain (EC2 IAM role). `deleteObject()` exported.
-  - Entry DELETE now best-effort deletes the S3 object (Phase 2 TODO resolved).
-  - **Local dev S3 = MinIO** in docker-compose (`minio` :9000 API / :9001 console, `minio-init` creates bucket `price-tracker-photos`). `.env` points AWS_* at minioadmin/minioadmin. Start: `docker compose up -d minio minio-init`.
+  - Storage client config-driven, provider-neutral `STORAGE_*` env (`ENDPOINT`, `REGION`, `BUCKET`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`, `FORCE_PATH_STYLE`), all required except region/path-style. Renamed from `AWS_*` with the R2 switch: R2 has no IAM-role chain, and `AWS_*` would leak R2 keys into any other AWS SDK client (Textract). `deleteObject()` exported.
+  - `requestChecksumCalculation`/`responseChecksumValidation: 'WHEN_REQUIRED'` is **required**: SDK ≥3.729 otherwise signs `x-amz-checksum-crc32` of an empty body into presigned PUT URLs → R2 rejects the real upload.
+  - Entry DELETE now best-effort deletes the stored object (Phase 2 TODO resolved).
+  - **Local dev storage = MinIO** in docker-compose (`minio` :9000 API / :9001 console, `minio-init` creates bucket `price-tracker-photos`). `.env` points STORAGE_* at minioadmin/minioadmin. To test against a real R2 dev bucket instead, swap `STORAGE_*` per `.env.example`. Start: `docker compose up -d minio minio-init`.
   - **Full roundtrip verified**: presign→PUT→presign GET→download bytes; 400/403/401 cases; entry delete → object `NoSuchKey`.
 - **Phase 4 (Reports) — DONE.** All aggregate via `$queryRawUnsafe` with `$N` params (userId always `$1::uuid`; dates appended). **Never trust Prisma nested `$queryRaw` template tags for conditionals — produces wrong `$N` syntax** → use `$queryRawUnsafe` + `buildDateWhere()` helper for dynamic WHERE.
   - `GET /reports/summary?from&to` → `{totalSpent, entryCount, avgPerEntry, currency}`.
