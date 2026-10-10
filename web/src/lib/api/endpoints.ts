@@ -3,6 +3,7 @@ import type {
   Category,
   CategoryBreakdown,
   Entry,
+  EntryInput,
   EntryQuery,
   GroupBy,
   Paginated,
@@ -38,10 +39,14 @@ export const entriesApi = {
   get: (id: string) => apiFetch<Entry>(`/entries/${id}`),
   calendar: (month: string, tz?: string) =>
     apiFetch<CalendarDay[]>("/entries/calendar", { query: { month, tz } }),
+  create: (body: EntryInput) => apiFetch<Entry>("/entries", { method: "POST", body }),
+  update: (id: string, body: EntryInput) => apiFetch<Entry>(`/entries/${id}`, { method: "PATCH", body }),
   remove: (id: string) => apiFetch<void>(`/entries/${id}`, { method: "DELETE" }),
 }
 
 export const uploadsApi = {
+  presign: (body: { contentType: string; ext: string }) =>
+    apiFetch<{ uploadUrl: string; photoKey: string }>("/uploads/presign", { method: "POST", body }),
   photoUrl: (key: string) => apiFetch<{ url: string }>("/uploads/photo-url", { query: { key } }),
   photoUrls: (keys: string[]) =>
     apiFetch<{ urls: Record<string, string> }>("/uploads/photo-urls", { method: "POST", body: { keys } }),

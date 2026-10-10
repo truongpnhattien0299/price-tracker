@@ -48,6 +48,24 @@ export type Entry = {
   createdAt: string
 }
 
+/**
+ * Body of POST /entries and PATCH /entries/:id. PATCH sends only changed
+ * fields; `null` clears a nullable column. `price` is a number here (the DTO
+ * validates `@IsNumber`), unlike the Decimal string the API returns.
+ */
+export type EntryInput = {
+  productName?: string | null
+  price?: number
+  currency?: string
+  unit?: string | null
+  categoryId?: string | null
+  photoKey?: string | null
+  address?: string | null
+  storeName?: string | null
+  note?: string | null
+  purchasedAt?: string
+}
+
 export type Paginated<T> = {
   data: T[]
   meta: { page: number; limit: number; total: number; totalPages: number }

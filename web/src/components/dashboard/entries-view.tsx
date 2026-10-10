@@ -1,13 +1,16 @@
 "use client"
 
-import { ReceiptTextIcon, SearchXIcon } from "lucide-react"
+import { PlusIcon, ReceiptTextIcon, SearchXIcon } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { toast } from "sonner"
 
 import { DateRangePicker } from "@/components/dashboard/date-range-picker"
 import { DeleteEntryDialog } from "@/components/dashboard/delete-entry-dialog"
 import { EntriesPagination } from "@/components/dashboard/entries-pagination"
-import { EntriesTable, EntriesTableSkeleton } from "@/components/dashboard/entries-table"
+import { EntriesTable, EntriesTableSkeleton, type EntryActions } from "@/components/dashboard/entries-table"
+import { EntryDetailDialog } from "@/components/dashboard/entry-detail-dialog"
+import { EntryFormDialog } from "@/components/dashboard/entry-form-dialog"
 import { EmptyState, QueryContent } from "@/components/shared/query-state"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -29,6 +32,7 @@ import type { Entry, EntryQuery } from "@/types/api"
 const PAGE_SIZE = 20
 const ALL_CATEGORIES = "all"
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 type Filters = { search: string; category: string; from: string; to: string; page: number }
 
@@ -72,7 +76,21 @@ function useEntryFilters() {
     [hrefWith, router],
   )
 
-  return { filters, setFilters, hrefWith }
+  // `?entry=<id>` opens the detail dialog; not a filter, so it keeps the page.
+  const rawEntry = params.get("entry") ?? ""
+  const entryId = UUID.test(rawEntry) ? rawEntry : null
+  const setEntryId = useCallback(
+    (id: string | null) => {
+      const next = new URLSearchParams(params)
+      if (id) next.set("entry", id)
+      else next.delete("entry")
+      const qs = next.toString()
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    },
+    [params, pathname, router],
+  )
+
+  return { filters, setFilters, hrefWith, entryId, setEntryId }
 }
 
 function SearchInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -104,10 +122,31 @@ function SearchInput({ value, onChange }: { value: string; onChange: (v: string)
 }
 
 export function EntriesView() {
-  const { filters, setFilters, hrefWith } = useEntryFilters()
+  const { filters, setFilters, hrefWith, entryId, setEntryId } = useEntryFilters()
   const { search, category, from, to, page } = filters
   const categories = useCategories()
   const [deleting, setDeleting] = useState<Entry | null>(null)
+  // `null` = closed, `"new"` = create, an Entry = edit that row.
+  const [form, setForm] = useState<Entry | "new" | null>(null)
+  // The clicked row seeds the detail dialog so it opens without a fetch.
+  const [opened, setOpened] = useState<Entry>()
+
+  const actions = useMemo<EntryActions>(
+    () => ({
+      onOpen: (e) => {
+        setOpened(e)
+        setEntryId(e.id)
+      },
+      onEdit: setForm,
+      onDelete: setDeleting,
+    }),
+    [setEntryId],
+  )
+  const onEntryNotFound = useCallback(() => {
+    // Fixed id: the URL update lags a render, so the effect may call this twice.
+    toast.error("Không tìm thấy khoản chi này.", { id: "entry-not-found" })
+    setEntryId(null)
+  }, [setEntryId])
 
   const query = useMemo<EntryQuery>(
     () => ({
@@ -161,6 +200,10 @@ export function EntriesView() {
           }
         />
         {entries.isFetching && !entries.isPending && <Spinner className="text-muted-foreground" />}
+        <Button className="sm:ml-auto" onClick={() => setForm("new")}>
+          <PlusIcon data-icon="inline-start" />
+          Thêm khoản chi
+        </Button>
       </div>
 
       <Card>
@@ -194,7 +237,7 @@ export function EntriesView() {
             }
           >
             {(res) => (
-              <EntriesTable entries={res.data} onDelete={setDeleting} stale={entries.isPlaceholderData} />
+              <EntriesTable entries={res.data} actions={actions} stale={entries.isPlaceholderData} />
             )}
           </QueryContent>
         </CardContent>
@@ -211,6 +254,17 @@ export function EntriesView() {
       )}
 
       <DeleteEntryDialog entry={deleting} onOpenChange={(open) => !open && setDeleting(null)} />
+      <EntryFormDialog
+        open={form !== null}
+        entry={form === "new" ? null : form}
+        onOpenChange={(open) => !open && setForm(null)}
+      />
+      <EntryDetailDialog
+        entryId={entryId}
+        initial={opened}
+        onOpenChange={(open) => !open && setEntryId(null)}
+        onNotFound={onEntryNotFound}
+      />
     </>
   )
 }

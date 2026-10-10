@@ -63,6 +63,23 @@ export function fromDayKey(key: string) {
   return new Date(y, m - 1, d)
 }
 
+/** ISO instant → `YYYY-MM-DDTHH:mm` in VN wall time, for `<input type="datetime-local">`. */
+export function toVnInput(iso: string | Date) {
+  const v = new Date(new Date(iso).getTime() + VN_OFFSET_MS)
+  return `${v.getUTCFullYear()}-${pad(v.getUTCMonth() + 1)}-${pad(v.getUTCDate())}T${pad(v.getUTCHours())}:${pad(v.getUTCMinutes())}`
+}
+
+/**
+ * Inverse of `toVnInput`. The input is read as VN time whatever the browser's
+ * zone is, so a purchase typed as 08:00 lands on 08:00 in the calendar.
+ */
+export function fromVnInput(value: string) {
+  const [date, time = "00:00"] = value.split("T")
+  const [y, m, d] = date!.split("-").map(Number) as [number, number, number]
+  const [h, min] = time.split(":").map(Number) as [number, number]
+  return new Date(Date.UTC(y, m - 1, d, h, min) - VN_OFFSET_MS).toISOString()
+}
+
 function periodKey({ y, m, d }: Ymd, groupBy: GroupBy) {
   if (groupBy === "year") return String(y)
   if (groupBy === "month") return `${y}-${pad(m + 1)}`

@@ -1,9 +1,17 @@
 "use client"
 
-import { Trash2Icon } from "lucide-react"
+import { EllipsisIcon, PencilIcon, Trash2Icon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -37,13 +45,47 @@ function Head({ withActions }: { withActions?: boolean }) {
   )
 }
 
+export type EntryActions = {
+  onOpen: (entry: Entry) => void
+  onEdit: (entry: Entry) => void
+  onDelete: (entry: Entry) => void
+}
+
+function RowMenu({ entry, actions }: { entry: Entry; actions: EntryActions }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon-sm" aria-label={`Thao tác với ${entry.productName ?? "khoản chi"}`}>
+          <EllipsisIcon />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuGroup>
+          <DropdownMenuItem onSelect={() => actions.onEdit(entry)}>
+            <PencilIcon />
+            Sửa
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
+          <DropdownMenuItem variant="destructive" onSelect={() => actions.onDelete(entry)}>
+            <Trash2Icon />
+            Xoá
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 export function EntriesTable({
   entries,
-  onDelete,
+  actions,
   stale,
 }: {
   entries: Entry[]
-  onDelete?: (entry: Entry) => void
+  /** Clickable names + a ⋯ menu per row. Omitted for the read-only overview list. */
+  actions?: EntryActions
   /** Previous page still shown while the next one loads. */
   stale?: boolean
 }) {
@@ -52,14 +94,24 @@ export function EntriesTable({
 
   return (
     <Table className={cn("transition-opacity", stale && "opacity-60")}>
-      <Head withActions={!!onDelete} />
+      <Head withActions={!!actions} />
       <TableBody>
         {entries.map((e) => {
           const category = e.categoryId ? categories.get(e.categoryId) : undefined
           return (
             <TableRow key={e.id}>
               <TableCell>
-                <div className="font-medium">{e.productName ?? "—"}</div>
+                {actions ? (
+                  <button
+                    type="button"
+                    onClick={() => actions.onOpen(e)}
+                    className="focus-visible:ring-ring/50 rounded-sm text-left font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-[3px]"
+                  >
+                    {e.productName ?? "Khoản chi"}
+                  </button>
+                ) : (
+                  <div className="font-medium">{e.productName ?? "—"}</div>
+                )}
                 {/* Category and date columns are hidden on phones; summarise them here. */}
                 <div className="text-muted-foreground text-xs sm:hidden">
                   {category?.icon} {formatDate(e.purchasedAt)}
@@ -77,16 +129,9 @@ export function EntriesTable({
               <TableCell className="hidden md:table-cell">{e.storeName ?? "—"}</TableCell>
               <TableCell className="hidden sm:table-cell">{formatDate(e.purchasedAt)}</TableCell>
               <TableCell className="text-right tabular-nums">{formatMoney(e.price, e.currency)}</TableCell>
-              {onDelete && (
+              {actions && (
                 <TableCell>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`Xoá ${e.productName ?? "khoản chi"}`}
-                    onClick={() => onDelete(e)}
-                  >
-                    <Trash2Icon />
-                  </Button>
+                  <RowMenu entry={e} actions={actions} />
                 </TableCell>
               )}
             </TableRow>

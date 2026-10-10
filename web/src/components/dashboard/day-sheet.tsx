@@ -98,7 +98,8 @@ function DayBody({ day, onClose }: { day: string; onClose: () => void }) {
       </SheetHeader>
       <div className="@container px-4 pb-4">{body}</div>
       <EntryDetailDialog
-        entry={selected}
+        entryId={selected?.id ?? null}
+        initial={selected ?? undefined}
         onOpenChange={(open) => !open && setSelected(null)}
         // Deleted the day's last entry: nothing left to show.
         onDeleted={() => list?.length === 1 && onClose()}
