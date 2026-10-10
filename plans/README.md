@@ -16,8 +16,8 @@ Kế hoạch phát triển web app (Next.js 15 + shadcn/ui). Mỗi plan là mộ
 |---|---|---|
 | [01](01-auth-cookie-bff.md) | Auth: BFF route handlers + httpOnly cookie + middleware | ✅ Xong 2026-10-10 |
 | [02](02-react-query-wiring.md) | React Query + nối dashboard với API thật, bỏ mock data | ✅ Xong 2026-10-10 |
-| 03 | Calendar: lưới ảnh theo tháng (`/entries/calendar` + presigned photo URL) | ⏳ Làm tiếp, chưa viết |
-| 04 | CRUD entry trên web (sửa / xoá, có thể upload ảnh) | Chưa viết |
+| [03](03-calendar.md) | Calendar: lưới ảnh theo tháng (`/entries/calendar` + batch presigned photo URL) | ✅ Xong 2026-10-10 |
+| 04 | CRUD entry trên web (sửa / xoá, có thể upload ảnh) | ⏳ Làm tiếp, chưa viết |
 | 05 | Landing: nội dung thật, ảnh app, link store, giá Pro | Chưa viết |
 | 06 | Theme / brand color | Chưa viết |
 | 07 | Entitlement: trial còn lại, khoá dữ liệu > 3 tháng (cần backend Phase 10) | Chưa viết |

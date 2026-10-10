@@ -125,8 +125,11 @@ Route groups under `web/src/app/`: `(marketing)` → `/` (landing), `(auth)` →
 - **Data layer is TanStack React Query** (plans/02). Layering: `lib/api/endpoints.ts` (plain calls) → `hooks/queries/*` (useQuery/useMutation) → components; components never call endpoints directly. Keys come only from `lib/query/keys.ts`; entry mutations invalidate `entries`, `calendar` and `reports`. Logout calls `queryClient.clear()`. Dashboard pages stay server components (for `metadata`) and render a client `*-view.tsx`.
 - `/reports/*` return plain **numbers** (backend `Number()`s the SQL text), unlike entry `price` which is a Decimal string. `GET /entries` does not include the category relation — resolve names with `useCategoryMap()`.
 - Date ranges are computed in Asia/Ho_Chi_Minh (fixed UTC+7) by `lib/date-range.ts`; backend `to` is inclusive, so ranges end 1 ms before the next period. Entries filters live in the URL (`?search=&category=&from=&to=&page=`, days as `YYYY-MM-DD`), written with `router.replace`.
-- In the Claude browser pane the document is often `hidden`, which pauses React Query retries and fires focus refetches — not an app bug.
+- **Photos**: S3 objects are private. Grids fetch presigned GET URLs in one `POST /uploads/photo-urls` (`usePhotoUrls`, which also seeds each key's `usePhotoUrl` cache) — never one request per photo, because the API throttles 60 req/min **per IP** and behind the BFF every user shares the Next server's IP. Render with `components/shared/photo.tsx` (plain `<img>`; signed URLs expire in 5 min, so `next/image` optimisation is useless).
+- Calendar (plans/03): `?month=YYYY-MM&day=YYYY-MM-DD` in the URL, Monday-first grid from `monthGrid()`, cover = first photo of the VN day. No money on the calendar (DESIGN.md §8).
+- In the Claude browser pane the document is often `hidden` (e.g. another tab such as the `api` preview is fronted), which pauses React Query retries, fires focus refetches, and blocks `requestAnimationFrame` so `<Suspense>` content may not render until a screenshot — not an app bug. Front the tab with `tabs_select`.
 - `next build` shares `.next/` with the dev server — restart `pnpm run dev` after building.
+- Likewise `nest build` wipes `backend/dist/` and kills a running `start:dev` watcher — stop it first.
 
 ## Working conventions
 
