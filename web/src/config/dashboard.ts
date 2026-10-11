@@ -5,6 +5,8 @@ import {
   MapIcon,
   ReceiptTextIcon,
   SettingsIcon,
+  ShieldCheckIcon,
+  StoreIcon,
   type LucideIcon,
 } from "lucide-react"
 
@@ -19,9 +21,15 @@ export const dashboardNav: NavItem[] = [
   { title: "Khoản chi", href: "/dashboard/entries", icon: ReceiptTextIcon },
   { title: "Lịch", href: "/dashboard/calendar", icon: CalendarDaysIcon },
   { title: "Bản đồ", href: "/dashboard/map", icon: MapIcon },
+  { title: "Cửa hàng", href: "/dashboard/stores", icon: StoreIcon },
   { title: "Báo cáo", href: "/dashboard/reports", icon: ChartPieIcon },
 ]
 
 export const dashboardSecondaryNav: NavItem[] = [
   { title: "Cài đặt", href: "/dashboard/settings", icon: SettingsIcon },
+]
+
+// Shown only when `/auth/me` says role "admin"; the API guards these routes itself.
+export const dashboardAdminNav: NavItem[] = [
+  { title: "Duyệt cửa hàng", href: "/dashboard/admin/stores", icon: ShieldCheckIcon },
 ]

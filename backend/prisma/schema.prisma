@@ -16,6 +16,18 @@ enum ProSource {
   subscription
 }
 
+enum Role {
+  user
+  admin
+}
+
+// personal -> (user proposes) pending -> (admin approves) global (plans/09).
+enum StoreStatus {
+  personal
+  pending
+  global
+}
+
 model User {
   id           String    @id @default(uuid()) @db.Uuid
   email        String    @unique
@@ -24,10 +36,13 @@ model User {
   // Entitlement source of truth. isPro computed dynamically: proExpiresAt != null && now < proExpiresAt
   proSource    ProSource @default(none) @map("pro_source")
   proExpiresAt DateTime? @map("pro_expires_at")
+  // Read from the DB on every admin request (AdminGuard), never put in the JWT.
+  role         Role      @default(user)
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
   entries Entry[]
+  stores  Store[]
 
   @@map("users")
 }
@@ -58,6 +73,9 @@ model Entry {
   latitude    Decimal? @db.Decimal(10, 7)
   longitude   Decimal? @db.Decimal(10, 7)
   address     String?
+  // Snapshot columns below (store name, address, coordinates) are copied from
+  // the linked store on write and rewritten when the store changes (plans/09).
+  storeId     String?  @map("store_id") @db.Uuid
   storeName   String?  @map("store_name")
   note        String?
   // Real purchase date — separate from createdAt for accurate time-based reports.
@@ -67,8 +85,37 @@ model Entry {
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  store    Store?    @relation(fields: [storeId], references: [id], onDelete: SetNull)
 
   @@index([userId, purchasedAt])
   @@index([userId, categoryId])
+  @@index([userId, storeId])
   @@map("entries")
+}
+
+// A place the user buys from. OSM misses most small Vietnamese shops, so users
+// create their own; an admin promotes proposed ones to global (plans/09).
+model Store {
+  id         String      @id @default(uuid()) @db.Uuid
+  // Creator. Null when an admin created it directly.
+  ownerId    String?     @map("owner_id") @db.Uuid
+  name       String
+  // Lowercase, no diacritics, đ -> d: what search matches against.
+  nameSearch String      @map("name_search")
+  address    String?
+  latitude   Decimal     @db.Decimal(10, 7)
+  longitude  Decimal     @db.Decimal(10, 7)
+  status     StoreStatus @default(personal)
+  // Why an admin turned a proposal down; cleared when proposed again.
+  reviewNote String?     @map("review_note")
+  proposedAt DateTime?   @map("proposed_at")
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+
+  owner   User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  entries Entry[]
+
+  @@index([status])
+  @@index([ownerId])
+  @@map("stores")
 }

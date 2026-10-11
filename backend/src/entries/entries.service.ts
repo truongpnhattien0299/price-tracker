@@ -12,6 +12,7 @@ import { CreateEntryDto } from './dto/create-entry.dto';
 import { UpdateEntryDto } from './dto/update-entry.dto';
 import { QueryEntriesDto } from './dto/query-entries.dto';
 import { MapQueryDto } from './dto/map-query.dto';
+import { StoresService } from '../stores/stores.service';
 
 export interface CalendarCell {
   date: string;
@@ -69,6 +70,7 @@ export class EntriesService {
     private readonly prisma: PrismaService,
     private readonly uploads: UploadsService,
     private readonly entitlement: EntitlementService,
+    private readonly stores: StoresService,
   ) {}
 
   async create(userId: string, dto: CreateEntryDto) {
@@ -76,6 +78,7 @@ export class EntriesService {
     await this.entitlement.assertCanCreate(userId);
     await this.assertCategory(dto.categoryId);
     if (dto.photoKey) this.uploads.assertOwnKey(userId, dto.photoKey);
+    const store = dto.storeId ? await this.stores.snapshotFor(userId, dto.storeId) : null;
     const entry = await this.prisma.entry.create({
       data: {
         userId,
@@ -92,6 +95,7 @@ export class EntriesService {
         storeName: dto.storeName ?? null,
         note: dto.note ?? null,
         purchasedAt: dto.purchasedAt ?? new Date(),
+        ...(store ? { storeId: dto.storeId, ...store } : {}),
       },
     });
     // Backdated past a Free user's window, it comes back locked like any other read.
@@ -176,6 +180,7 @@ export class EntriesService {
     assertCoordinatePair(dto);
     if (dto.categoryId !== undefined) await this.assertCategory(dto.categoryId);
     if (dto.photoKey) this.uploads.assertOwnKey(userId, dto.photoKey);
+    const store = dto.storeId ? await this.stores.snapshotFor(userId, dto.storeId) : null;
 
     const data: Prisma.EntryUpdateInput = {};
     if (dto.productName !== undefined) data.productName = dto.productName;
@@ -196,6 +201,17 @@ export class EntriesService {
       data.category = dto.categoryId
         ? { connect: { id: dto.categoryId } }
         : { disconnect: true };
+    // The store's own values win; editing the location by hand unlinks it,
+    // since the entry no longer matches the store (plans/09 S7).
+    if (store) {
+      Object.assign(data, store, { store: { connect: { id: dto.storeId! } } });
+    } else if (
+      dto.storeId === null ||
+      (current.storeId &&
+        [dto.storeName, dto.address, dto.latitude, dto.longitude].some((v) => v !== undefined))
+    ) {
+      data.store = { disconnect: true };
+    }
 
     const updated = await this.prisma.entry.update({ where: { id }, data });
     // Photo replaced or removed: the old object is no longer referenced.
