@@ -1,4 +1,6 @@
 import type {
+  AdminStore,
+  AdminStoreQuery,
   CalendarDay,
   Category,
   CategoryBreakdown,
@@ -14,6 +16,9 @@ import type {
   ReportSummary,
   PlaceSuggestion,
   ReverseGeocode,
+  MyStore,
+  Store,
+  StoreInput,
   TimeSeriesPoint,
   TopStore,
   User,
@@ -53,6 +58,32 @@ export const entriesApi = {
   create: (body: EntryInput) => apiFetch<EntryRow>("/entries", { method: "POST", body }),
   update: (id: string, body: EntryInput) => apiFetch<EntryRow>(`/entries/${id}`, { method: "PATCH", body }),
   remove: (id: string) => apiFetch<void>(`/entries/${id}`, { method: "DELETE" }),
+}
+
+export const storesApi = {
+  search: (query: { q?: string; lat?: number; lng?: number; limit?: number }, signal?: AbortSignal) =>
+    apiFetch<Store[]>("/stores", { query, signal }),
+  mine: () => apiFetch<MyStore[]>("/stores/mine"),
+  create: (body: Required<Pick<StoreInput, "name" | "latitude" | "longitude">> & StoreInput) =>
+    apiFetch<Store>("/stores", { method: "POST", body }),
+  update: (id: string, body: StoreInput) => apiFetch<Store>(`/stores/${id}`, { method: "PATCH", body }),
+  remove: (id: string) => apiFetch<void>(`/stores/${id}`, { method: "DELETE" }),
+  propose: (id: string) => apiFetch<Store>(`/stores/${id}/propose`, { method: "POST" }),
+  withdraw: (id: string) => apiFetch<Store>(`/stores/${id}/withdraw`, { method: "POST" }),
+}
+
+// Admin only (plans/09). Never lists personal stores.
+export const adminStoresApi = {
+  list: (query: AdminStoreQuery) => apiFetch<Paginated<AdminStore>>("/admin/stores", { query }),
+  create: (body: Required<Pick<StoreInput, "name" | "latitude" | "longitude">> & StoreInput) =>
+    apiFetch<Store>("/admin/stores", { method: "POST", body }),
+  update: (id: string, body: StoreInput) => apiFetch<Store>(`/admin/stores/${id}`, { method: "PATCH", body }),
+  remove: (id: string) => apiFetch<void>(`/admin/stores/${id}`, { method: "DELETE" }),
+  approve: (id: string) => apiFetch<Store>(`/admin/stores/${id}/approve`, { method: "POST" }),
+  reject: (id: string, note?: string) =>
+    apiFetch<Store>(`/admin/stores/${id}/reject`, { method: "POST", body: { note } }),
+  merge: (id: string, targetId: string) =>
+    apiFetch<{ movedEntries: number }>(`/admin/stores/${id}/merge`, { method: "POST", body: { targetId } }),
 }
 
 // BFF routes (not the NestJS API): Nominatim behind one shared rate limit, Photon for search.

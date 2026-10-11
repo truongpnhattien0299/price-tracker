@@ -12,18 +12,21 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
-import { dashboardNav, dashboardSecondaryNav, type NavItem } from "@/config/dashboard"
+import { dashboardAdminNav, dashboardNav, dashboardSecondaryNav, type NavItem } from "@/config/dashboard"
+import { useMe } from "@/hooks/queries/use-me"
 
-function NavGroup({ items, className }: { items: NavItem[]; className?: string }) {
+function NavGroup({ items, label, className }: { items: NavItem[]; label?: string; className?: string }) {
   const pathname = usePathname()
   return (
     <SidebarGroup className={className}>
+      {label && <SidebarGroupLabel>{label}</SidebarGroupLabel>}
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => (
@@ -43,6 +46,7 @@ function NavGroup({ items, className }: { items: NavItem[]; className?: string }
 }
 
 export function AppSidebar() {
+  const { data: user } = useMe()
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
@@ -50,6 +54,7 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <NavGroup items={dashboardNav} />
+        {user?.role === "admin" && <NavGroup items={dashboardAdminNav} label="Quản trị" />}
         <NavGroup items={dashboardSecondaryNav} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>

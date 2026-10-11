@@ -1,4 +1,4 @@
-import type { EntryQuery, GroupBy, MapQuery, ReportRange } from "@/types/api"
+import type { AdminStoreQuery, EntryQuery, GroupBy, MapQuery, ReportRange } from "@/types/api"
 
 // Single source of truth for React Query keys. Prefix keys (`entries.all`,
 // `reports.all`, `["calendar"]`) exist so mutations can invalidate a whole family.
@@ -23,6 +23,13 @@ export const qk = {
     byCategory: (r: ReportRange) => ["reports", "by-category", r] as const,
     timeSeries: (g: GroupBy, r: ReportRange) => ["reports", "time-series", g, r] as const,
     topStores: (r: ReportRange) => ["reports", "top-stores", r] as const,
+  },
+  stores: {
+    all: ["stores"] as const,
+    /** `near` is rounded by the caller, like `placeSearch`. */
+    search: (q: string, near: { lat: number; lng: number } | null) => ["stores", "search", q, near] as const,
+    mine: ["stores", "mine"] as const,
+    admin: (q: AdminStoreQuery) => ["stores", "admin", q] as const,
   },
   /** `near` is rounded by the caller so small pin moves share a cache entry. */
   placeSearch: (q: string, near: { lat: number; lng: number } | null) => ["place-search", q, near] as const,

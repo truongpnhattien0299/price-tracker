@@ -5,7 +5,7 @@
 export type Coords = { lat: number; lng: number }
 
 /** Where the form's coordinates came from; "saved" = already on the entry. */
-export type LocationSource = "exif" | "device" | "search" | "manual" | "saved"
+export type LocationSource = "exif" | "device" | "search" | "manual" | "saved" | "store"
 /** `accuracy` (metres) is known only for a device fix. */
 export type PickedLocation = Coords & { source: LocationSource; accuracy?: number }
 

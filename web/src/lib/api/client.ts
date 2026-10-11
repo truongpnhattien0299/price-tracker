@@ -13,7 +13,8 @@ export class HttpError extends Error {
 
 /** A 402 from the entitlement checks; `code` says which limit (plans/07). */
 export function paywallCode(error: unknown): PaywallCode | null {
-  return error instanceof HttpError && error.status === 402 ? (error.body?.code ?? null) : null
+  const code = error instanceof HttpError && error.status === 402 ? error.body?.code : null
+  return code && code !== "STORE_GLOBAL" ? code : null
 }
 
 type Query = Record<string, string | number | undefined | null>

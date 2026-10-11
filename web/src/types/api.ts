@@ -5,12 +5,16 @@
 
 export type ProSource = "none" | "trial" | "subscription"
 
+/** Only shows or hides admin UI; the API enforces it on every admin route (plans/09 S1). */
+export type Role = "user" | "admin"
+
 export type User = {
   id: string
   email: string
   displayName: string
   proSource: ProSource
   proExpiresAt: string | null
+  role: Role
   createdAt: string
 }
 
@@ -53,6 +57,8 @@ export type Entry = {
   latitude: string | null
   longitude: string | null
   address: string | null
+  /** Linked store; `storeName` / `address` / coordinates are then a copy of it (plans/09 S6). */
+  storeId: string | null
   storeName: string | null
   note: string | null
   purchasedAt: string
@@ -87,6 +93,8 @@ export type EntryInput = {
   longitude?: number | null
   address?: string | null
   storeName?: string | null
+  /** Set: the server fills store name, address and coordinates from the store. */
+  storeId?: string | null
   note?: string | null
   purchasedAt?: string
 }
@@ -147,6 +155,55 @@ export type PlaceSuggestion = {
   placeName: string | null
 }
 
+/**
+ * personal → (user proposes) pending → (admin approves) global (plans/09 S2).
+ * Global stores are visible to everyone and only admins may change them.
+ */
+export type StoreStatus = "personal" | "pending" | "global"
+
+/** `GET /stores`: a store the user may pick. Coordinates are numbers. */
+export type Store = {
+  id: string
+  name: string
+  address: string | null
+  lat: number
+  lng: number
+  status: StoreStatus
+  /** Created by the current user. */
+  mine: boolean
+  /** Metres from the `lat`/`lng` the list was asked for. */
+  distanceM?: number
+}
+
+/** `GET /stores/mine`. `reviewNote` = why an admin turned the last proposal down. */
+export type MyStore = Store & {
+  reviewNote: string | null
+  proposedAt: string | null
+  createdAt: string
+  entryCount: number
+}
+
+export type StoreInput = {
+  name?: string
+  address?: string | null
+  latitude?: number
+  longitude?: number
+}
+
+export type NearbyStore = { id: string; name: string; address: string | null; distanceM: number }
+
+/** `GET /admin/stores`. `nearbyGlobal` (pending only) = merge candidates within 100 m. */
+export type AdminStore = Store & {
+  ownerName: string | null
+  proposedAt: string | null
+  createdAt: string
+  updatedAt: string
+  entryCount: number
+  nearbyGlobal?: NearbyStore[]
+}
+
+export type AdminStoreQuery = { status: "pending" | "global"; q?: string; page?: number; limit?: number }
+
 export type CalendarDay = {
   date: string
   count: number
@@ -185,5 +242,6 @@ export type ApiError = {
   statusCode: number
   message: string | string[]
   error?: string
-  code?: PaywallCode
+  /** 402 paywall codes, or `STORE_GLOBAL` (403: only an admin may change a global store). */
+  code?: PaywallCode | "STORE_GLOBAL"
 }

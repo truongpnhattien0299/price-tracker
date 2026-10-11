@@ -7,6 +7,7 @@ import {
   LocateFixedIcon,
   LockIcon,
   MapIcon,
+  StoreIcon,
   Trash2Icon,
   XIcon,
 } from "lucide-react"
@@ -18,6 +19,9 @@ import { toast } from "sonner"
 import { DateTimePicker } from "@/components/dashboard/date-time-picker"
 import { PlaceSearch } from "@/components/dashboard/place-search"
 import { UPGRADE_HREF } from "@/components/dashboard/pro-lock"
+import { StoreFormDialog, type StoreDraft } from "@/components/dashboard/stores/store-form-dialog"
+import { StorePicker } from "@/components/dashboard/stores/store-picker"
+import { StoreStatusBadge } from "@/components/dashboard/stores/store-status-badge"
 import { Photo } from "@/components/shared/photo"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -61,7 +65,7 @@ import {
   type Coords,
   type PickedLocation,
 } from "@/lib/photo-location"
-import type { Entry, EntryInput, EntryRow, PlaceSuggestion } from "@/types/api"
+import type { Entry, EntryInput, EntryRow, PlaceSuggestion, Store } from "@/types/api"
 
 // MapLibre (~220 KB) loads only once the location field shows a map.
 const LocationPicker = dynamic(() => import("@/components/dashboard/location-picker"), {
@@ -112,6 +116,20 @@ function toInput(v: Values) {
   }
 }
 
+/** A store linked to the entry. From a saved entry only its copied fields are known, not its status. */
+type LinkedStore = Pick<Store, "id" | "name" | "address" | "lat" | "lng"> & Partial<Pick<Store, "status">>
+
+function linkedStore(entry: Entry | null): LinkedStore | null {
+  if (!entry?.storeId || !entry.latitude || !entry.longitude) return null
+  return {
+    id: entry.storeId,
+    name: entry.storeName ?? "",
+    address: entry.address,
+    lat: Number(entry.latitude),
+    lng: Number(entry.longitude),
+  }
+}
+
 function savedLocation(entry: Entry | null): PickedLocation | null {
   if (!entry?.latitude || !entry.longitude) return null
   return { lat: Number(entry.latitude), lng: Number(entry.longitude), source: "saved" }
@@ -124,16 +142,28 @@ function coordsInput(location: Coords | null): Pick<EntryInput, "latitude" | "lo
     : { latitude: null, longitude: null }
 }
 
-/** PATCH body with only the fields that changed; null clears a field. */
-function diff(entry: Entry, v: Values, location: Coords | null): EntryInput {
+/**
+ * PATCH body with only the fields that changed; null clears a field. With a
+ * store linked, the server copies its name, address and position (plans/09
+ * S7), so those are not sent; sending them would unlink the store.
+ */
+function diff(entry: Entry, v: Values, location: Coords | null, store: LinkedStore | null): EntryInput {
   const next = toInput(v)
   const out: EntryInput = {}
   if (next.price !== Number(entry.price)) out.price = next.price
-  for (const k of ["productName", "categoryId", "unit", "storeName", "address", "note"] as const) {
+  for (const k of ["productName", "categoryId", "unit", "note"] as const) {
     if (next[k] !== (entry[k] ?? null)) out[k] = next[k]
   }
   // Compared at minute precision, the input's resolution, so seconds survive an untouched field.
   if (v.purchasedAt !== toVnInput(entry.purchasedAt)) out.purchasedAt = fromVnInput(v.purchasedAt)
+  if (store) {
+    if (store.id !== entry.storeId) out.storeId = store.id
+    return out
+  }
+  if (entry.storeId) out.storeId = null
+  for (const k of ["storeName", "address"] as const) {
+    if (next[k] !== (entry[k] ?? null)) out[k] = next[k]
+  }
   const coords = coordsInput(location)
   const was = coordsInput(savedLocation(entry))
   if (coords.latitude !== was.latitude || coords.longitude !== was.longitude) Object.assign(out, coords)
@@ -335,6 +365,8 @@ function sourceLabel({ source, accuracy }: PickedLocation) {
       return "Đã chọn trên bản đồ."
     case "saved":
       return "Vị trí đã lưu."
+    case "store":
+      return "Lấy từ cửa hàng đã bỏ chọn."
   }
 }
 
@@ -441,6 +473,25 @@ function EntryForm({
   // What geocoding last wrote: a field still holding it may be overwritten, one the user typed may not.
   const autoFilled = useRef<{ address?: string; storeName?: string }>({})
 
+  // A linked store owns the name, address and position (plans/09): the
+  // location fields hide, and photo / GPS lookups stop writing them.
+  const [store, setStore] = useState<LinkedStore | null>(() => linkedStore(entry))
+  const linked = useRef(store)
+  const [storeDraft, setStoreDraft] = useState<StoreDraft | null>(null)
+
+  function linkStore(next: LinkedStore | null) {
+    linked.current = next
+    setStore(next)
+    if (!next) return
+    // Any lookup still in flight is for a spot the store now replaces.
+    ++locateSeq.current
+    ++geocodeSeq.current
+    setLocating(false)
+    // Kept underneath, so unlinking leaves them as editable free text.
+    setValues((v) => ({ ...v, storeName: next.name, address: next.address ?? "" }))
+    setLocation({ lat: next.lat, lng: next.lng, source: "store" })
+  }
+
   /**
    * `picked` = the user chose this spot themselves (map, search, "current
    * location"), so the address follows the pin even over typed or saved text.
@@ -508,6 +559,8 @@ function EntryForm({
       setValues((v) => ({ ...v, purchasedAt: toVnInput(meta.takenAt!) }))
       setTimeFromPhoto(true)
     }
+    // The chosen store already says where this was bought.
+    if (linked.current) return
     if (meta.gps) placeAt({ ...meta.gps, source: "exif" }, false)
     // No GPS in the file: only a photo taken just now may borrow the phone's position.
     else if (isFreshCapture(file)) await locateDevice(seq, false)
@@ -559,7 +612,7 @@ function EntryForm({
       stage = "save"
 
       if (entry) {
-        const input = diff(entry, values, location)
+        const input = diff(entry, values, location, store)
         if (photoKey !== undefined) input.photoKey = photoKey
         if (Object.keys(input).length === 0) return onDone(entry)
         const saved = await update.mutateAsync({ id: entry.id, input })
@@ -572,7 +625,12 @@ function EntryForm({
         )
         input.purchasedAt = fromVnInput(values.purchasedAt)
         if (photoKey) input.photoKey = photoKey
-        if (location) Object.assign(input, coordsInput(location))
+        if (store) {
+          // The server fills these from the store.
+          delete input.storeName
+          delete input.address
+          input.storeId = store.id
+        } else if (location) Object.assign(input, coordsInput(location))
         const saved = await create.mutateAsync(input)
         toast.success("Đã thêm khoản chi.")
         onDone(saved)
@@ -583,178 +641,217 @@ function EntryForm({
   }
 
   return (
-    // Only the fields scroll; the dialog header above and the actions below stay put.
-    <form onSubmit={onSubmit} noValidate className="flex min-h-0 flex-1 flex-col">
-      <FieldGroup className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain p-4">
-        {atCap && limits && (
-          <Alert>
-            <LockIcon />
-            <AlertTitle>Đã dùng hết {limits.entriesPerMonth} khoản chi của tháng này</AlertTitle>
-            <AlertDescription>
-              <p>
-                Gói Free tạm dừng ghi mới tới đầu tháng sau.{" "}
-                <Link href={UPGRADE_HREF} className="text-foreground underline underline-offset-4">
-                  Xem gói Pro
-                </Link>{" "}
-                để ghi không giới hạn.
-              </p>
-            </AlertDescription>
-          </Alert>
-        )}
-        {formError && (
-          <Alert variant="destructive">
-            <CircleAlertIcon />
-            <AlertDescription>{formError}</AlertDescription>
-          </Alert>
-        )}
-
-        <PhotoField
-          entry={entry}
-          photo={photo}
-          error={errors.photo}
-          disabled={busy}
-          onPick={pick}
-          onRemove={() => setPhoto({ kind: "none" })}
-        />
-
-        <Field data-invalid={!!errors.price || undefined}>
-          <FieldLabel htmlFor="price">Giá</FieldLabel>
-          <PriceInput
-            value={values.price}
-            currency={currency}
-            decimals={decimals}
-            invalid={!!errors.price}
-            onChange={set("price")}
-          />
-          {errors.price && <FieldError>{errors.price}</FieldError>}
-        </Field>
-
-        <Field>
-          <FieldLabel htmlFor="productName">Tên sản phẩm</FieldLabel>
-          <Input
-            id="productName"
-            maxLength={120}
-            placeholder="Rau muống"
-            value={values.productName}
-            onChange={(e) => set("productName")(e.target.value)}
-          />
-        </Field>
-
-        <Field>
-          <FieldLabel htmlFor="category">Danh mục</FieldLabel>
-          <Select value={values.categoryId || NO_CATEGORY} onValueChange={(v) => set("categoryId")(v === NO_CATEGORY ? "" : v)}>
-            <SelectTrigger id="category" className="w-full">
-              <SelectValue placeholder="Danh mục" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem value={NO_CATEGORY}>Không có</SelectItem>
-                {categories.data?.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.icon} {c.name}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </Field>
-
-        <Field>
-          <FieldLabel htmlFor="unit">Đơn vị</FieldLabel>
-          <Input
-            id="unit"
-            maxLength={20}
-            placeholder="kg, bó, hộp…"
-            value={values.unit}
-            onChange={(e) => set("unit")(e.target.value)}
-          />
-        </Field>
-
-        <Field data-invalid={!!errors.purchasedAt || undefined}>
-          <FieldLabel htmlFor="purchasedAt">Giờ mua</FieldLabel>
-          <DateTimePicker
-            id="purchasedAt"
-            value={values.purchasedAt}
-            invalid={!!errors.purchasedAt}
-            onChange={(v) => {
-              purchasedTouched.current = true
-              setTimeFromPhoto(false)
-              set("purchasedAt")(v)
-            }}
-          />
-          {errors.purchasedAt ? (
-            <FieldError>{errors.purchasedAt}</FieldError>
-          ) : (
-            <FieldDescription>
-              {timeFromPhoto ? "Lấy từ giờ chụp trong ảnh, theo giờ Việt Nam." : "Theo giờ Việt Nam."}
-            </FieldDescription>
+    <>
+      {/* Only the fields scroll; the dialog header above and the actions below stay put. */}
+      <form onSubmit={onSubmit} noValidate className="flex min-h-0 flex-1 flex-col">
+        <FieldGroup className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain p-4">
+          {atCap && limits && (
+            <Alert>
+              <LockIcon />
+              <AlertTitle>Đã dùng hết {limits.entriesPerMonth} khoản chi của tháng này</AlertTitle>
+              <AlertDescription>
+                <p>
+                  Gói Free tạm dừng ghi mới tới đầu tháng sau.{" "}
+                  <Link href={UPGRADE_HREF} className="text-foreground underline underline-offset-4">
+                    Xem gói Pro
+                  </Link>{" "}
+                  để ghi không giới hạn.
+                </p>
+              </AlertDescription>
+            </Alert>
           )}
-        </Field>
+          {formError && (
+            <Alert variant="destructive">
+              <CircleAlertIcon />
+              <AlertDescription>{formError}</AlertDescription>
+            </Alert>
+          )}
 
-        <Field>
-          <FieldLabel htmlFor="storeName">Cửa hàng</FieldLabel>
-          <Input
-            id="storeName"
-            maxLength={120}
-            placeholder="Chợ Bến Thành"
-            value={values.storeName}
-            onChange={(e) => set("storeName")(e.target.value)}
+          <PhotoField
+            entry={entry}
+            photo={photo}
+            error={errors.photo}
+            disabled={busy}
+            onPick={pick}
+            onRemove={() => setPhoto({ kind: "none" })}
           />
-        </Field>
 
-        <Field>
-          <FieldLabel htmlFor="address">Địa chỉ</FieldLabel>
-          <Input
-            id="address"
-            maxLength={255}
-            value={values.address}
-            onChange={(e) => set("address")(e.target.value)}
-          />
-        </Field>
+          <Field data-invalid={!!errors.price || undefined}>
+            <FieldLabel htmlFor="price">Giá</FieldLabel>
+            <PriceInput
+              value={values.price}
+              currency={currency}
+              decimals={decimals}
+              invalid={!!errors.price}
+              onChange={set("price")}
+            />
+            {errors.price && <FieldError>{errors.price}</FieldError>}
+          </Field>
 
-        <LocationField
-          location={location}
-          locating={locating}
-          disabled={busy}
-          onChange={(c) => {
-            ++locateSeq.current
-            setLocating(false)
-            placeAt({ ...c, source: "manual" }, true)
-          }}
-          onSearchPick={onSearchPick}
-          onUseDevice={onUseDevice}
-          onClear={() => {
-            ++locateSeq.current
-            ++geocodeSeq.current
-            setLocating(false)
-            setLocation(null)
-          }}
-        />
+          <Field>
+            <FieldLabel htmlFor="productName">Tên sản phẩm</FieldLabel>
+            <Input
+              id="productName"
+              maxLength={120}
+              placeholder="Rau muống"
+              value={values.productName}
+              onChange={(e) => set("productName")(e.target.value)}
+            />
+          </Field>
 
-        <Field>
-          <FieldLabel htmlFor="note">Ghi chú</FieldLabel>
-          <Textarea
-            id="note"
-            maxLength={500}
-            value={values.note}
-            onChange={(e) => set("note")(e.target.value)}
-          />
-        </Field>
+          <Field>
+            <FieldLabel htmlFor="category">Danh mục</FieldLabel>
+            <Select value={values.categoryId || NO_CATEGORY} onValueChange={(v) => set("categoryId")(v === NO_CATEGORY ? "" : v)}>
+              <SelectTrigger id="category" className="w-full">
+                <SelectValue placeholder="Danh mục" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value={NO_CATEGORY}>Không có</SelectItem>
+                  {categories.data?.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.icon} {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
 
-      </FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="unit">Đơn vị</FieldLabel>
+            <Input
+              id="unit"
+              maxLength={20}
+              placeholder="kg, bó, hộp…"
+              value={values.unit}
+              onChange={(e) => set("unit")(e.target.value)}
+            />
+          </Field>
 
-      <DialogFooter className="m-0 shrink-0 rounded-none pb-[max(1rem,env(safe-area-inset-bottom))] sm:rounded-b-xl sm:pb-4">
-        <DialogClose asChild>
-          <Button type="button" variant="outline" disabled={busy}>
-            Huỷ
+          <Field data-invalid={!!errors.purchasedAt || undefined}>
+            <FieldLabel htmlFor="purchasedAt">Giờ mua</FieldLabel>
+            <DateTimePicker
+              id="purchasedAt"
+              value={values.purchasedAt}
+              invalid={!!errors.purchasedAt}
+              onChange={(v) => {
+                purchasedTouched.current = true
+                setTimeFromPhoto(false)
+                set("purchasedAt")(v)
+              }}
+            />
+            {errors.purchasedAt ? (
+              <FieldError>{errors.purchasedAt}</FieldError>
+            ) : (
+              <FieldDescription>
+                {timeFromPhoto ? "Lấy từ giờ chụp trong ảnh, theo giờ Việt Nam." : "Theo giờ Việt Nam."}
+              </FieldDescription>
+            )}
+          </Field>
+
+          {store ? (
+            <Field>
+              <FieldLabel>Cửa hàng</FieldLabel>
+              <div className="flex items-start gap-3 rounded-lg border p-3">
+                <StoreIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{store.name}</span>
+                    {store.status && <StoreStatusBadge status={store.status} />}
+                  </div>
+                  <p className="text-sm text-muted-foreground">{store.address ?? "Chưa có địa chỉ"}</p>
+                </div>
+                <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => linkStore(null)}>
+                  <XIcon data-icon="inline-start" />
+                  Bỏ chọn
+                </Button>
+              </div>
+              <FieldDescription>Địa chỉ và vị trí lấy theo cửa hàng, không cần chọn lại.</FieldDescription>
+            </Field>
+          ) : (
+            <>
+              <Field>
+                <FieldLabel htmlFor="storeName">Cửa hàng</FieldLabel>
+                <StorePicker
+                  id="storeName"
+                  text={values.storeName}
+                  near={location}
+                  disabled={busy}
+                  onTextChange={set("storeName")}
+                  onPick={linkStore}
+                  onCreate={(name) => setStoreDraft({ name, address: values.address.trim(), location })}
+                />
+                <FieldDescription>Chọn cửa hàng đã lưu để khỏi nhập lại vị trí, hoặc tạo cửa hàng mới.</FieldDescription>
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="address">Địa chỉ</FieldLabel>
+                <Input
+                  id="address"
+                  maxLength={255}
+                  value={values.address}
+                  onChange={(e) => set("address")(e.target.value)}
+                />
+              </Field>
+            </>
+          )}
+
+          {!store && (
+            <LocationField
+              location={location}
+              locating={locating}
+              disabled={busy}
+              onChange={(c) => {
+                ++locateSeq.current
+                setLocating(false)
+                placeAt({ ...c, source: "manual" }, true)
+              }}
+              onSearchPick={onSearchPick}
+              onUseDevice={onUseDevice}
+              onClear={() => {
+                ++locateSeq.current
+                ++geocodeSeq.current
+                setLocating(false)
+                setLocation(null)
+              }}
+            />
+          )}
+
+          <Field>
+            <FieldLabel htmlFor="note">Ghi chú</FieldLabel>
+            <Textarea
+              id="note"
+              maxLength={500}
+              value={values.note}
+              onChange={(e) => set("note")(e.target.value)}
+            />
+          </Field>
+
+        </FieldGroup>
+
+        <DialogFooter className="m-0 shrink-0 rounded-none pb-[max(1rem,env(safe-area-inset-bottom))] sm:rounded-b-xl sm:pb-4">
+          <DialogClose asChild>
+            <Button type="button" variant="outline" disabled={busy}>
+              Huỷ
+            </Button>
+          </DialogClose>
+          <Button type="submit" disabled={busy || atCap}>
+            {busy && <Spinner data-icon="inline-start" />}
+            {upload.isPending ? "Đang tải ảnh…" : busy ? "Đang lưu…" : entry ? "Lưu" : "Thêm"}
           </Button>
-        </DialogClose>
-        <Button type="submit" disabled={busy || atCap}>
-          {busy && <Spinner data-icon="inline-start" />}
-          {upload.isPending ? "Đang tải ảnh…" : busy ? "Đang lưu…" : entry ? "Lưu" : "Thêm"}
-        </Button>
-      </DialogFooter>
-    </form>
+        </DialogFooter>
+      </form>
+
+      {/* Outside the <form>: React submit events bubble through portals and would save the entry too. */}
+      <StoreFormDialog
+        open={!!storeDraft}
+        store={null}
+        draft={storeDraft ?? undefined}
+        onOpenChange={(o) => !o && setStoreDraft(null)}
+        onSaved={linkStore}
+      />
+    </>
   )
 }
 
