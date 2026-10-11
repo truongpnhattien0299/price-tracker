@@ -15,8 +15,10 @@
     "build": "nest build",
     "start": "nest start",
     "start:dev": "nest start --watch",
+    "start:local": "set -a && . ./.env.local && set +a && nest start --watch",
     "start:prod": "node dist/main",
     "storage:check": "node --env-file=.env scripts/check-storage.mjs",
+    "admin:grant": "node scripts/grant-admin.mjs",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio"

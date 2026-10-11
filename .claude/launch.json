@@ -21,7 +21,7 @@
         "--dir",
         "backend",
         "run",
-        "start:dev"
+        "start:local"
       ],
       "port": 3000
     }

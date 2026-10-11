@@ -61,6 +61,12 @@ export class CreateEntryDto {
   @MaxLength(120)
   storeName?: string;
 
+  // Picking a store fills storeName/address/latitude/longitude from it,
+  // overriding whatever was sent for those (plans/09 S6–S7).
+  @IsOptional()
+  @IsUUID()
+  storeId?: string | null;
+
   @IsOptional()
   @IsString()
   @MaxLength(500)

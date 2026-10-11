@@ -12,6 +12,7 @@ import { EntriesModule } from './entries/entries.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { ReportsModule } from './reports/reports.module';
 import { EntitlementModule } from './entitlement/entitlement.module';
+import { StoresModule } from './stores/stores.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { EntitlementModule } from './entitlement/entitlement.module';
     UploadsModule,
     ReportsModule,
     EntitlementModule,
+    StoresModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ClientIpThrottlerGuard }],
 })
