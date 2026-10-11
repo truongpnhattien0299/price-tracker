@@ -10,6 +10,9 @@ services:
     region: singapore # same region as the Neon project (aws-ap-southeast-1)
     branch: main
     rootDir: backend # also limits auto-deploys to changes under backend/
+    # `pnpm run build` runs `prisma generate` itself: Render restores a cached
+    # node_modules, so a schema change with an unchanged lockfile would otherwise
+    # build against the previous Prisma client.
     # The corepack bundled with Node 22.13 only knows npm's old registry signing
     # keys and fails pnpm downloads with "Cannot find matching keyid" — upgrade
     # it before enabling.
