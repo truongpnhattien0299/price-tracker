@@ -6,6 +6,7 @@ export const qk = {
   me: ["me"] as const,
   entitlement: ["entitlement"] as const,
   categories: ["categories"] as const,
+  adminCategories: ["categories", "admin"] as const,
   entries: {
     all: ["entries"] as const,
     list: (q: EntryQuery) => ["entries", "list", q] as const,
