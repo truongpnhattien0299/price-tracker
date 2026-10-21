@@ -1,6 +1,10 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ReportsService } from './reports.service';
-import { ReportQueryDto, TimeSeriesQueryDto } from './dto/report-query.dto';
+import {
+  CategorySeriesQueryDto,
+  ReportQueryDto,
+  TimeSeriesQueryDto,
+} from './dto/report-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthUser } from '../auth/strategies/jwt.strategy';
@@ -23,6 +27,14 @@ export class ReportsController {
   @Get('time-series')
   timeSeries(@CurrentUser() u: AuthUser, @Query() q: TimeSeriesQueryDto) {
     return this.reports.timeSeries(u.userId, q);
+  }
+
+  @Get('category-series')
+  categorySeries(
+    @CurrentUser() u: AuthUser,
+    @Query() q: CategorySeriesQueryDto,
+  ) {
+    return this.reports.categorySeries(u.userId, q);
   }
 
   @Get('top-stores')
