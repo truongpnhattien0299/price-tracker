@@ -6,6 +6,8 @@ import type {
   Category,
   CategoryBreakdown,
   CategoryInput,
+  CategorySeriesPoint,
+  CategorySeriesQuery,
   Entitlement,
   EntryInput,
   EntryQuery,
@@ -121,6 +123,10 @@ export const reportsApi = {
     apiFetch<CategoryBreakdown[]>("/reports/by-category", { query: range }),
   timeSeries: (groupBy: GroupBy, range: ReportRange = {}) =>
     apiFetch<TimeSeriesPoint[]>("/reports/time-series", { query: { groupBy, ...range } }),
+  categorySeries: ({ categoryIds, ...query }: CategorySeriesQuery) =>
+    apiFetch<CategorySeriesPoint[]>("/reports/category-series", {
+      query: { ...query, categoryIds: categoryIds?.length ? categoryIds.join(",") : undefined },
+    }),
   topStores: (range: ReportRange = {}) =>
     apiFetch<TopStore[]>("/reports/top-stores", { query: range }),
 }

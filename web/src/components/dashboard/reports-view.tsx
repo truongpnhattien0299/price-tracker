@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useMemo, useState } from "react"
 
 import { CategoryBreakdown } from "@/components/dashboard/category-breakdown"
+import { CategorySpending } from "@/components/dashboard/category-spending"
 import { UPGRADE_HREF } from "@/components/dashboard/pro-lock"
 import { DateRangePicker, type DateRange } from "@/components/dashboard/date-range-picker"
 import { SpendingChart } from "@/components/dashboard/spending-chart"
@@ -126,6 +127,7 @@ function Reports({ minDay }: { minDay: string | null }) {
         <CategoryBreakdown query={byCategory} description="Tỷ trọng trong kỳ đã chọn" />
         <TopStores query={topStores} />
       </div>
+      <CategorySpending range={range} />
     </>
   )
 }

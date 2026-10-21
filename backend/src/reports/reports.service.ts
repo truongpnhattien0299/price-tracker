@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EntitlementService } from '../entitlement/entitlement.service';
-import { ReportQueryDto, TimeSeriesQueryDto } from './dto/report-query.dto';
+import {
+  CategorySeriesQueryDto,
+  ReportQueryDto,
+  TimeSeriesQueryDto,
+} from './dto/report-query.dto';
 
 // All queries push aggregation to Postgres (GROUP BY / SUM) — DESIGN.md §8.
 // $queryRawUnsafe used only where we build dynamic WHERE clauses;
@@ -100,6 +104,64 @@ export class ReportsService {
     return rows.map((r) => ({ period: r.period, total: Number(r.total) }));
   }
 
+  /**
+   * Spending per category per month/year, optionally limited to some categories
+   * (`none` = uncategorized). Only (period, category) pairs with entries come back.
+   */
+  async categorySeries(userId: string, q: CategorySeriesQueryDto) {
+    await this.entitlement.assertReportRange(userId, q.from, {
+      groupBy: q.groupBy,
+      tz: q.tz,
+    });
+    const { where: dateWhere, params } = buildDateWhere(userId, q, 'e');
+    let where = dateWhere;
+    if (q.categoryIds?.length) {
+      const ids = q.categoryIds.filter((id) => id !== 'none');
+      const clauses: string[] = [];
+      if (ids.length) {
+        params.push(ids);
+        clauses.push(`e.category_id = ANY($${params.length}::uuid[])`);
+      }
+      if (ids.length < q.categoryIds.length) clauses.push('e.category_id IS NULL');
+      where += ` AND (${clauses.join(' OR ')})`;
+    }
+    const tzIdx = params.length + 1;
+    const fmtIdx = tzIdx + 1;
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        period: string;
+        categoryId: string | null;
+        categoryName: string;
+        total: string;
+        count: string;
+      }[]
+    >(
+      `SELECT to_char(
+                (e.purchased_at AT TIME ZONE 'UTC' AT TIME ZONE $${tzIdx}),
+                $${fmtIdx}
+              ) AS period,
+              e.category_id::text                     AS "categoryId",
+              COALESCE(c.name, 'Không có danh mục')   AS "categoryName",
+              SUM(e.price)::text                      AS total,
+              COUNT(*)::text                          AS count
+       FROM entries e
+       LEFT JOIN categories c ON e.category_id = c.id
+       WHERE ${where}
+       GROUP BY period, e.category_id, c.name
+       ORDER BY period ASC, SUM(e.price) DESC`,
+      ...params,
+      q.tz,
+      q.groupBy === 'month' ? 'YYYY-MM' : 'YYYY',
+    );
+    return rows.map((r) => ({
+      period: r.period,
+      categoryId: r.categoryId,
+      categoryName: r.categoryName,
+      total: Number(r.total),
+      count: Number(r.count),
+    }));
+  }
+
   async topStores(userId: string, q: ReportQueryDto) {
     await this.entitlement.assertReportRange(userId, q.from);
     const { where, params } = buildDateWhere(userId, q);
@@ -133,7 +195,7 @@ function buildDateWhere(
   tableAlias?: string,
 ) {
   const p = tableAlias ? `${tableAlias}.` : '';
-  const params: (string | Date)[] = [userId];
+  const params: (string | string[] | Date)[] = [userId];
   let where = `${p}user_id = $1::uuid`;
 
   if (q.from) {

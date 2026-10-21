@@ -239,6 +239,18 @@ export type GroupBy = "day" | "month" | "year"
 
 export type TimeSeriesPoint = { period: string; total: number }
 
+/** `GET /reports/category-series`. `categoryIds`: ids, or "none" for uncategorized; omitted = all. */
+export type CategorySeriesQuery = ReportRange & { groupBy: "month" | "year"; categoryIds?: string[] }
+
+/** One (period, category) pair that has entries; `categoryId` null = uncategorized. */
+export type CategorySeriesPoint = {
+  period: string
+  categoryId: string | null
+  categoryName: string
+  total: number
+  count: number
+}
+
 export type TopStore = { storeName: string; total: number; count: number }
 
 /** `code` comes with 402s (plans/07 E9). */
