@@ -18,7 +18,7 @@ import { toast } from "sonner"
 
 import { ConfirmDialog } from "@/components/dashboard/stores/confirm-dialog"
 import { StoreFormDialog, storeError } from "@/components/dashboard/stores/store-form-dialog"
-import { formatDistance } from "@/components/dashboard/stores/store-status-badge"
+import { formatDistance, StoreKindIcon, storePlace } from "@/components/dashboard/stores/store-status-badge"
 import { EmptyState, QueryContent } from "@/components/shared/query-state"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -50,8 +50,8 @@ import type { AdminStore, NearbyStore } from "@/types/api"
 type Status = "pending" | "global"
 const PAGE_SIZE = 20
 
-function osmLink(s: AdminStore) {
-  return `https://www.openstreetmap.org/?mlat=${s.lat}&mlon=${s.lng}#map=18/${s.lat}/${s.lng}`
+function osmLink({ lat, lng }: { lat: number; lng: number }) {
+  return `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=18/${lat}/${lng}`
 }
 
 function RejectDialog({ store, onOpenChange }: { store: AdminStore | null; onOpenChange: (open: boolean) => void }) {
@@ -129,14 +129,24 @@ function StoreCard({
   return (
     <li className="space-y-2 py-4">
       <div className="flex items-start gap-3">
-        <StoreIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <StoreKindIcon kind={store.kind} className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1 space-y-1">
           <p className="font-medium">{store.name}</p>
           <p className="text-sm text-muted-foreground">
-            {store.address ?? "Chưa có địa chỉ"} ·{" "}
-            <a href={osmLink(store)} target="_blank" rel="noreferrer" className="underline underline-offset-4">
-              Xem vị trí
-            </a>
+            {storePlace(store)}
+            {store.lat !== null && store.lng !== null && (
+              <>
+                {" · "}
+                <a
+                  href={osmLink({ lat: store.lat, lng: store.lng })}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline underline-offset-4"
+                >
+                  Xem vị trí
+                </a>
+              </>
+            )}
           </p>
           <p className="text-xs text-muted-foreground">
             {[
@@ -152,12 +162,19 @@ function StoreCard({
 
       {pending && !!store.nearbyGlobal?.length && (
         <div className="ml-7 rounded-lg border border-dashed p-2 text-sm">
-          <p className="mb-1 text-muted-foreground">Có thể trùng với cửa hàng công khai gần đó:</p>
+          <p className="mb-1 text-muted-foreground">
+            {store.kind === "online"
+              ? "Có thể trùng với cửa hàng online công khai cùng tên:"
+              : "Có thể trùng với cửa hàng công khai gần đó:"}
+          </p>
           <ul className="space-y-1">
             {store.nearbyGlobal.map((g) => (
               <li key={g.id} className="flex items-center gap-2">
                 <span className="min-w-0 flex-1 truncate">
-                  {g.name} <span className="text-muted-foreground">· {formatDistance(g.distanceM)}</span>
+                  {g.name}
+                  {g.distanceM !== null && (
+                    <span className="text-muted-foreground"> · {formatDistance(g.distanceM)}</span>
+                  )}
                 </span>
                 <Button variant="outline" size="xs" onClick={() => onMerge(g)}>
                   <CombineIcon data-icon="inline-start" />

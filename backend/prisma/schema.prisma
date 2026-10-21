@@ -28,6 +28,12 @@ enum StoreStatus {
   global
 }
 
+// An online shop has no place: no address, no coordinates (CHECK in the migration).
+enum StoreKind {
+  physical
+  online
+}
+
 model User {
   id           String    @id @default(uuid()) @db.Uuid
   email        String    @unique
@@ -102,9 +108,11 @@ model Store {
   name       String
   // Lowercase, no diacritics, đ -> d: what search matches against.
   nameSearch String      @map("name_search")
+  kind       StoreKind   @default(physical)
   address    String?
-  latitude   Decimal     @db.Decimal(10, 7)
-  longitude  Decimal     @db.Decimal(10, 7)
+  // Set for a physical store, null for an online one.
+  latitude   Decimal?    @db.Decimal(10, 7)
+  longitude  Decimal?    @db.Decimal(10, 7)
   status     StoreStatus @default(personal)
   // Why an admin turned a proposal down; cleared when proposed again.
   reviewNote String?     @map("review_note")

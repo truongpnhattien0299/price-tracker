@@ -167,17 +167,21 @@ export type PlaceSuggestion = {
  */
 export type StoreStatus = "personal" | "pending" | "global"
 
-/** `GET /stores`: a store the user may pick. Coordinates are numbers. */
+/** An online store has no address and no coordinates. */
+export type StoreKind = "physical" | "online"
+
+/** `GET /stores`: a store the user may pick. Coordinates are numbers, null for an online store. */
 export type Store = {
   id: string
   name: string
+  kind: StoreKind
   address: string | null
-  lat: number
-  lng: number
+  lat: number | null
+  lng: number | null
   status: StoreStatus
   /** Created by the current user. */
   mine: boolean
-  /** Metres from the `lat`/`lng` the list was asked for. */
+  /** Metres from the `lat`/`lng` the list was asked for; absent for an online store. */
   distanceM?: number
 }
 
@@ -189,16 +193,22 @@ export type MyStore = Store & {
   entryCount: number
 }
 
+/** A physical store needs `latitude`/`longitude` (together); an online one must send neither, nor an address. */
 export type StoreInput = {
   name?: string
+  kind?: StoreKind
   address?: string | null
   latitude?: number
   longitude?: number
 }
 
-export type NearbyStore = { id: string; name: string; address: string | null; distanceM: number }
+/** `distanceM` null = an online store with a matching name. */
+export type NearbyStore = { id: string; name: string; address: string | null; distanceM: number | null }
 
-/** `GET /admin/stores`. `nearbyGlobal` (pending only) = merge candidates within 100 m. */
+/**
+ * `GET /admin/stores`. `nearbyGlobal` (pending only) = merge candidates: global
+ * stores within 100 m, or for an online proposal, online stores with a matching name.
+ */
 export type AdminStore = Store & {
   ownerName: string | null
   proposedAt: string | null

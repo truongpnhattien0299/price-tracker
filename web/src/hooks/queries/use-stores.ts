@@ -13,7 +13,8 @@ import { qk } from "@/lib/query/keys"
 import type { Coords } from "@/lib/photo-location"
 import type { AdminStoreQuery, StoreInput } from "@/types/api"
 
-type NewStore = Required<Pick<StoreInput, "name" | "latitude" | "longitude">> & StoreInput
+/** A physical store also needs latitude/longitude; the API checks that per kind. */
+type NewStore = StoreInput & { name: string }
 
 /**
  * Stores the user may pick (own + global), nearest first when `near` is known,

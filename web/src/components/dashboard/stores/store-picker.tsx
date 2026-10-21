@@ -3,7 +3,12 @@
 import { PlusIcon, StoreIcon, XIcon } from "lucide-react"
 import { useEffect, useId, useState } from "react"
 
-import { formatDistance, StoreStatusBadge } from "@/components/dashboard/stores/store-status-badge"
+import {
+  formatDistance,
+  StoreKindIcon,
+  storePlace,
+  StoreStatusBadge,
+} from "@/components/dashboard/stores/store-status-badge"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group"
 import { Spinner } from "@/components/ui/spinner"
 import { useStoreSearch } from "@/hooks/queries/use-stores"
@@ -166,7 +171,10 @@ export function StorePicker({
             >
               {option.kind === "store" ? (
                 <>
-                  <StoreIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <StoreKindIcon
+                    kind={option.store.kind}
+                    className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                  />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
                       <span className="truncate font-medium">{option.store.name}</span>
@@ -175,10 +183,10 @@ export function StorePicker({
                     <span className="block truncate text-xs text-muted-foreground">
                       {[
                         option.store.distanceM !== undefined && formatDistance(option.store.distanceM),
-                        option.store.address,
+                        storePlace(option.store),
                       ]
                         .filter(Boolean)
-                        .join(" · ") || "Chưa có địa chỉ"}
+                        .join(" · ")}
                     </span>
                   </span>
                 </>
