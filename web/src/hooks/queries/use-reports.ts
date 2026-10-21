@@ -1,10 +1,10 @@
 "use client"
 
-import { useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useQuery } from "@tanstack/react-query"
 
 import { reportsApi } from "@/lib/api/endpoints"
 import { qk } from "@/lib/query/keys"
-import type { GroupBy, ReportRange } from "@/types/api"
+import type { CategorySeriesQuery, GroupBy, ReportRange } from "@/types/api"
 
 export function useReportSummary(range: ReportRange) {
   return useQuery({
@@ -32,5 +32,13 @@ export function useTopStores(range: ReportRange) {
   return useQuery({
     queryKey: qk.reports.topStores(range),
     queryFn: () => reportsApi.topStores(range),
+  })
+}
+
+export function useCategorySeries(query: CategorySeriesQuery) {
+  return useQuery({
+    queryKey: qk.reports.categorySeries(query),
+    queryFn: () => reportsApi.categorySeries(query),
+    placeholderData: keepPreviousData,
   })
 }
