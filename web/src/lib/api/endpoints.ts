@@ -1,9 +1,11 @@
 import type {
+  AdminCategory,
   AdminStore,
   AdminStoreQuery,
   CalendarDay,
   Category,
   CategoryBreakdown,
+  CategoryInput,
   Entitlement,
   EntryInput,
   EntryQuery,
@@ -46,6 +48,16 @@ export const entitlementApi = {
 
 export const categoriesApi = {
   list: () => apiFetch<Category[]>("/categories"),
+}
+
+// Admin only: categories are shared by every user.
+export const adminCategoriesApi = {
+  list: () => apiFetch<AdminCategory[]>("/admin/categories"),
+  create: (body: CategoryInput & { name: string }) =>
+    apiFetch<Category>("/admin/categories", { method: "POST", body }),
+  update: (id: string, body: CategoryInput) =>
+    apiFetch<Category>(`/admin/categories/${id}`, { method: "PATCH", body }),
+  remove: (id: string) => apiFetch<void>(`/admin/categories/${id}`, { method: "DELETE" }),
 }
 
 export const entriesApi = {

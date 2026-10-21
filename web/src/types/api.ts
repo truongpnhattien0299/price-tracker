@@ -44,6 +44,12 @@ export type Category = {
   isDefault: boolean
 }
 
+/** `GET /admin/categories`: `entryCount` counts every user's entries. */
+export type AdminCategory = Category & { entryCount: number }
+
+/** Admin create/update. `icon: null` (or "") clears it. */
+export type CategoryInput = { name?: string; icon?: string | null }
+
 export type Entry = {
   id: string
   categoryId: string | null
@@ -242,6 +248,9 @@ export type ApiError = {
   statusCode: number
   message: string | string[]
   error?: string
-  /** 402 paywall codes, or `STORE_GLOBAL` (403: only an admin may change a global store). */
-  code?: PaywallCode | "STORE_GLOBAL"
+  /**
+   * 402 paywall codes, `STORE_GLOBAL` (403: only an admin may change a global store)
+   * or `CATEGORY_EXISTS` (409: duplicate category name).
+   */
+  code?: PaywallCode | "STORE_GLOBAL" | "CATEGORY_EXISTS"
 }
