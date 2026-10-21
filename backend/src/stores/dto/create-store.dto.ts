@@ -1,5 +1,6 @@
 import { Transform } from 'class-transformer';
 import {
+  IsIn,
   IsLatitude,
   IsLongitude,
   IsNotEmpty,
@@ -11,7 +12,9 @@ import {
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
 
-// A store always has a position: picking it fills the entry's location (plans/09 S5).
+// A physical store always has a position: picking it fills the entry's
+// location (plans/09 S5). An online store has none, and no address. The
+// service checks which fields the kind needs.
 export class CreateStoreDto {
   @Transform(trim)
   @IsString()
@@ -20,14 +23,20 @@ export class CreateStoreDto {
   name!: string;
 
   @IsOptional()
+  @IsIn(['physical', 'online'])
+  kind?: 'physical' | 'online';
+
+  @IsOptional()
   @Transform(trim)
   @IsString()
   @MaxLength(255)
   address?: string | null;
 
+  @IsOptional()
   @IsLatitude()
-  latitude!: number;
+  latitude?: number | null;
 
+  @IsOptional()
   @IsLongitude()
-  longitude!: number;
+  longitude?: number | null;
 }

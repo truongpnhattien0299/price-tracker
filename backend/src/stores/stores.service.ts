@@ -6,7 +6,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, Store, StoreStatus } from '@prisma/client';
+import { Prisma, Store, StoreKind, StoreStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { likePattern, searchKey } from '../common/normalize.util';
 import { CreateStoreDto } from './dto/create-store.dto';
@@ -28,21 +28,23 @@ const distanceSql = (lat1: string, lng1: string, lat2: string, lng2: string) =>
 export interface StoreView {
   id: string;
   name: string;
+  kind: StoreKind;
   address: string | null;
-  lat: number;
-  lng: number;
+  /** Null for an online store. */
+  lat: number | null;
+  lng: number | null;
   status: StoreStatus;
   /** Created by the caller (only then can it be edited, while not global). */
   mine: boolean;
   distanceM?: number;
 }
 
-/** The entry columns a store fills in (S6). */
+/** The entry columns a store fills in (S6). An online store clears the location. */
 export interface StoreSnapshot {
   storeName: string;
   address: string | null;
-  latitude: Prisma.Decimal;
-  longitude: Prisma.Decimal;
+  latitude: Prisma.Decimal | null;
+  longitude: Prisma.Decimal | null;
 }
 
 export function snapshotOf(store: Store): StoreSnapshot {
@@ -67,34 +69,62 @@ function toView(store: Store, userId: string | null): StoreView {
   return {
     id: store.id,
     name: store.name,
+    kind: store.kind,
     address: store.address,
-    lat: store.latitude.toNumber(),
-    lng: store.longitude.toNumber(),
+    lat: store.latitude?.toNumber() ?? null,
+    lng: store.longitude?.toNumber() ?? null,
     status: store.status,
     mine: userId !== null && store.ownerId === userId,
   };
 }
 
-// A point needs both halves (same rule as entries).
-function assertCoordinatePair(dto: UpdateStoreDto) {
-  if ((dto.latitude === undefined) !== (dto.longitude === undefined)) {
-    throw new BadRequestException('latitude and longitude must be sent together');
-  }
-  if (dto.latitude === null || dto.longitude === null) {
-    throw new BadRequestException('A store must have a location');
-  }
-}
+type StoreFields = {
+  name?: string;
+  nameSearch?: string;
+  kind?: StoreKind;
+  address?: string | null;
+  latitude?: Prisma.Decimal | null;
+  longitude?: Prisma.Decimal | null;
+};
 
-function storeData(dto: UpdateStoreDto): Prisma.StoreUpdateInput {
+/**
+ * Columns to write for `dto` on top of `current` (null when creating). The
+ * kind decides the location: physical needs a point (sent now or already
+ * stored), online clears point and address (DB CHECK `stores_kind_location_check`).
+ */
+function storeData(current: Store | null, dto: UpdateStoreDto): StoreFields {
   if (dto.name === null) throw new BadRequestException('name cannot be null');
-  const data: Prisma.StoreUpdateInput = {};
+  const data: StoreFields = {};
   if (dto.name !== undefined) {
     data.name = dto.name;
     data.nameSearch = searchKey(dto.name);
   }
+  const kind = dto.kind ?? current?.kind ?? StoreKind.physical;
+  if (kind !== current?.kind) data.kind = kind;
+
+  if (kind === StoreKind.online) {
+    if (dto.latitude != null || dto.longitude != null || dto.address) {
+      throw new BadRequestException('An online store has no address or location');
+    }
+    if (current?.kind !== StoreKind.online) {
+      Object.assign(data, { address: null, latitude: null, longitude: null });
+    }
+    return data;
+  }
+
+  // A point needs both halves (same rule as entries).
+  if ((dto.latitude === undefined) !== (dto.longitude === undefined)) {
+    throw new BadRequestException('latitude and longitude must be sent together');
+  }
+  const missing = dto.latitude === undefined && !current?.latitude;
+  if (dto.latitude === null || dto.longitude === null || missing) {
+    throw new BadRequestException('A physical store must have a location');
+  }
   if (dto.address !== undefined) data.address = dto.address || null;
-  if (dto.latitude != null) data.latitude = new Prisma.Decimal(dto.latitude);
-  if (dto.longitude != null) data.longitude = new Prisma.Decimal(dto.longitude);
+  if (dto.latitude !== undefined) {
+    data.latitude = new Prisma.Decimal(dto.latitude);
+    data.longitude = new Prisma.Decimal(dto.longitude!);
+  }
   return data;
 }
 
@@ -118,14 +148,15 @@ export class StoresService {
       params.push(q.lat, q.lng);
       const [lat, lng] = [`$${params.length - 1}`, `$${params.length}`];
       distance = distanceSql('s.latitude', 's.longitude', lat, lng);
-      order = `"distanceM" ASC`;
+      // Online stores have no distance: after the nearby ones, most used first.
+      order = `"distanceM" ASC NULLS LAST, "useCount" DESC, s.name ASC`;
     }
     params.push(q.limit);
 
     const rows = await this.prisma.$queryRawUnsafe<
       (Omit<StoreView, 'distanceM'> & { distanceM: number | null; useCount: number })[]
     >(
-      `SELECT s.id, s.name, s.address,
+      `SELECT s.id, s.name, s.kind::text AS kind, s.address,
               s.latitude::float8  AS lat,
               s.longitude::float8 AS lng,
               s.status::text      AS status,
@@ -174,21 +205,18 @@ export class StoresService {
     }
     const store = await this.prisma.store.create({
       data: {
-        ownerId: userId,
+        ...storeData(null, dto),
         name: dto.name,
         nameSearch: searchKey(dto.name),
-        address: dto.address || null,
-        latitude: new Prisma.Decimal(dto.latitude),
-        longitude: new Prisma.Decimal(dto.longitude),
+        ownerId: userId,
       },
     });
     return toView(store, userId);
   }
 
   async update(userId: string, id: string, dto: UpdateStoreDto): Promise<StoreView> {
-    await this.getEditable(userId, id);
-    assertCoordinatePair(dto);
-    return toView(await this.save(id, storeData(dto)), userId);
+    const current = await this.getEditable(userId, id);
+    return toView(await this.save(id, storeData(current, dto)), userId);
   }
 
   async remove(userId: string, id: string) {
@@ -283,28 +311,38 @@ export class StoresService {
     };
   }
 
-  /** Global stores within NEARBY_M of each proposal: merge candidates (S10). */
+  /**
+   * Merge candidates for each proposal (S10): global physical stores within
+   * NEARBY_M of a physical one; for an online one, global online stores whose
+   * search name contains or is contained in it (`distanceM` null).
+   */
   private async nearbyGlobal(ids: string[]) {
-    const byId = new Map<string, { id: string; name: string; address: string | null; distanceM: number }[]>();
+    type Candidate = { id: string; name: string; address: string | null; distanceM: number | null };
+    const byId = new Map<string, Candidate[]>();
     if (ids.length === 0) return byId;
-    const rows = await this.prisma.$queryRawUnsafe<
-      { pendingId: string; id: string; name: string; address: string | null; distanceM: number }[]
-    >(
+    const rows = await this.prisma.$queryRawUnsafe<(Candidate & { pendingId: string })[]>(
       `SELECT * FROM (
          SELECT p.id AS "pendingId", g.id, g.name, g.address,
                 ${distanceSql('g.latitude', 'g.longitude', 'p.latitude', 'p.longitude')} AS "distanceM"
          FROM stores p
-         JOIN stores g ON g.status = 'global'
-         WHERE p.id = ANY($1::uuid[])
+         JOIN stores g ON g.status = 'global' AND g.kind = 'physical'
+         WHERE p.id = ANY($1::uuid[]) AND p.kind = 'physical'
        ) d
        WHERE d."distanceM" <= $2
-       ORDER BY d."distanceM" ASC`,
+       UNION ALL
+       SELECT p.id, g.id, g.name, g.address, NULL::float8
+       FROM stores p
+       JOIN stores g ON g.status = 'global' AND g.kind = 'online'
+        AND (position(p.name_search IN g.name_search) > 0
+             OR position(g.name_search IN p.name_search) > 0)
+       WHERE p.id = ANY($1::uuid[]) AND p.kind = 'online'
+       ORDER BY "distanceM" ASC NULLS LAST`,
       ids,
       NEARBY_M,
     );
     for (const { pendingId, distanceM, ...g } of rows) {
       const list = byId.get(pendingId) ?? [];
-      list.push({ ...g, distanceM: Math.round(distanceM) });
+      list.push({ ...g, distanceM: distanceM === null ? null : Math.round(distanceM) });
       byId.set(pendingId, list);
     }
     return byId;
@@ -313,11 +351,9 @@ export class StoresService {
   async adminCreate(dto: CreateStoreDto): Promise<StoreView> {
     const store = await this.prisma.store.create({
       data: {
+        ...storeData(null, dto),
         name: dto.name,
         nameSearch: searchKey(dto.name),
-        address: dto.address || null,
-        latitude: new Prisma.Decimal(dto.latitude),
-        longitude: new Prisma.Decimal(dto.longitude),
         status: StoreStatus.global,
       },
     });
@@ -325,9 +361,8 @@ export class StoresService {
   }
 
   async adminUpdate(id: string, dto: UpdateStoreDto): Promise<StoreView> {
-    await this.getReviewable(id);
-    assertCoordinatePair(dto);
-    return toView(await this.save(id, storeData(dto)), null);
+    const current = await this.getReviewable(id);
+    return toView(await this.save(id, storeData(current, dto)), null);
   }
 
   async adminRemove(id: string) {
