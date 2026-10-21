@@ -25,6 +25,9 @@ services:
     startCommand: node dist/main
     # Liveness route that skips the DB, so health checks don't keep Neon awake.
     healthCheckPath: /api/v1/health/live
+    # The app pings its own RENDER_EXTERNAL_URL (set by Render) every 10 min so the
+    # free plan never spins down (KeepAliveService). One always-on free service
+    # uses ~744 of the workspace's 750 free instance hours a month.
     envVars:
       # .nvmrc sits at the repo root, outside rootDir. Do NOT set NODE_ENV=production:
       # pnpm would then skip devDependencies (@nestjs/cli, prisma) and the build fails.
