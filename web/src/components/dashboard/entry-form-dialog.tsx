@@ -7,7 +7,6 @@ import {
   LocateFixedIcon,
   LockIcon,
   MapIcon,
-  StoreIcon,
   Trash2Icon,
   XIcon,
 } from "lucide-react"
@@ -21,7 +20,7 @@ import { PlaceSearch } from "@/components/dashboard/place-search"
 import { UPGRADE_HREF } from "@/components/dashboard/pro-lock"
 import { StoreFormDialog, type StoreDraft } from "@/components/dashboard/stores/store-form-dialog"
 import { StorePicker } from "@/components/dashboard/stores/store-picker"
-import { StoreStatusBadge } from "@/components/dashboard/stores/store-status-badge"
+import { StoreKindIcon, storePlace, StoreStatusBadge } from "@/components/dashboard/stores/store-status-badge"
 import { Photo } from "@/components/shared/photo"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -116,17 +115,22 @@ function toInput(v: Values) {
   }
 }
 
-/** A store linked to the entry. From a saved entry only its copied fields are known, not its status. */
-type LinkedStore = Pick<Store, "id" | "name" | "address" | "lat" | "lng"> & Partial<Pick<Store, "status">>
+/**
+ * A store linked to the entry. From a saved entry only its copied fields are
+ * known, not its status; no copied position means an online store.
+ */
+type LinkedStore = Pick<Store, "id" | "name" | "kind" | "address" | "lat" | "lng"> & Partial<Pick<Store, "status">>
 
 function linkedStore(entry: Entry | null): LinkedStore | null {
-  if (!entry?.storeId || !entry.latitude || !entry.longitude) return null
+  if (!entry?.storeId) return null
+  const located = !!entry.latitude && !!entry.longitude
   return {
     id: entry.storeId,
     name: entry.storeName ?? "",
+    kind: located ? "physical" : "online",
     address: entry.address,
-    lat: Number(entry.latitude),
-    lng: Number(entry.longitude),
+    lat: located ? Number(entry.latitude) : null,
+    lng: located ? Number(entry.longitude) : null,
   }
 }
 
@@ -489,7 +493,8 @@ function EntryForm({
     setLocating(false)
     // Kept underneath, so unlinking leaves them as editable free text.
     setValues((v) => ({ ...v, storeName: next.name, address: next.address ?? "" }))
-    setLocation({ lat: next.lat, lng: next.lng, source: "store" })
+    // An online store has no position: the entry gets none either.
+    setLocation(next.lat !== null && next.lng !== null ? { lat: next.lat, lng: next.lng, source: "store" } : null)
   }
 
   /**
@@ -754,20 +759,24 @@ function EntryForm({
             <Field>
               <FieldLabel>Cửa hàng</FieldLabel>
               <div className="flex items-start gap-3 rounded-lg border p-3">
-                <StoreIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <StoreKindIcon kind={store.kind} className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{store.name}</span>
                     {store.status && <StoreStatusBadge status={store.status} />}
                   </div>
-                  <p className="text-sm text-muted-foreground">{store.address ?? "Chưa có địa chỉ"}</p>
+                  <p className="text-sm text-muted-foreground">{storePlace(store)}</p>
                 </div>
                 <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => linkStore(null)}>
                   <XIcon data-icon="inline-start" />
                   Bỏ chọn
                 </Button>
               </div>
-              <FieldDescription>Địa chỉ và vị trí lấy theo cửa hàng, không cần chọn lại.</FieldDescription>
+              <FieldDescription>
+                {store.kind === "online"
+                  ? "Mua online: khoản chi không có địa chỉ hay vị trí."
+                  : "Địa chỉ và vị trí lấy theo cửa hàng, không cần chọn lại."}
+              </FieldDescription>
             </Field>
           ) : (
             <>

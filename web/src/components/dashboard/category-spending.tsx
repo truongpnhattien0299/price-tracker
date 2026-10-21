@@ -7,6 +7,7 @@ import { Bar, BarChart, CartesianGrid, XAxis } from "recharts"
 
 import { UPGRADE_HREF } from "@/components/dashboard/pro-lock"
 import { EmptyState, QueryContent } from "@/components/shared/query-state"
+import { TOGGLE_ON } from "@/components/shared/toggle-on"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -35,9 +36,6 @@ const NONE = "none"
 const OTHER = "other"
 // --chart-1..5 are the only series colours; a sixth category and beyond stack as "Khác".
 const MAX_SERIES = 5
-// The outline toggle's "on" state is too faint for a multi-select filter.
-const CHIP_ON =
-  "data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary"
 
 // "2026-10" → "10/2026", "2026" → "2026".
 const periodLabel = (p: string) => (p.length === 7 ? `${p.slice(5, 7)}/${p.slice(0, 4)}` : p)
@@ -264,12 +262,12 @@ export function CategorySpending({ range }: { range: Required<ReportRange> }) {
               className="contents"
             >
               {categories.data?.map((c) => (
-                <ToggleGroupItem key={c.id} value={c.id} className={CHIP_ON}>
+                <ToggleGroupItem key={c.id} value={c.id} className={TOGGLE_ON}>
                   {c.icon && <span aria-hidden>{c.icon}</span>}
                   {c.name}
                 </ToggleGroupItem>
               ))}
-              <ToggleGroupItem value={NONE} className={CHIP_ON}>
+              <ToggleGroupItem value={NONE} className={TOGGLE_ON}>
                 Không có danh mục
               </ToggleGroupItem>
             </ToggleGroup>

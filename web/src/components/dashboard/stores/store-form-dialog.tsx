@@ -1,11 +1,12 @@
 "use client"
 
-import { CircleAlertIcon, LocateFixedIcon } from "lucide-react"
+import { CircleAlertIcon, LocateFixedIcon, ShoppingCartIcon, StoreIcon } from "lucide-react"
 import dynamic from "next/dynamic"
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 
 import { PlaceSearch } from "@/components/dashboard/place-search"
+import { TOGGLE_ON } from "@/components/shared/toggle-on"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,6 +22,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import {
   useAdminCreateStore,
   useAdminUpdateStore,
@@ -30,7 +32,7 @@ import {
 import { HttpError } from "@/lib/api/client"
 import { geocodeApi } from "@/lib/api/endpoints"
 import { getDevicePosition, roundCoord, type Coords } from "@/lib/photo-location"
-import type { Store, StoreInput } from "@/types/api"
+import type { Store, StoreInput, StoreKind } from "@/types/api"
 
 const LocationPicker = dynamic(() => import("@/components/dashboard/location-picker"), {
   ssr: false,
@@ -40,7 +42,7 @@ const LocationPicker = dynamic(() => import("@/components/dashboard/location-pic
 /** What the form opens with when creating: e.g. the name typed in the entry form and its pin. */
 export type StoreDraft = { name?: string; address?: string; location?: Coords | null }
 
-type Editable = Pick<Store, "id" | "name" | "address" | "lat" | "lng">
+type Editable = Pick<Store, "id" | "name" | "kind" | "address" | "lat" | "lng">
 
 export function storeError(err: unknown) {
   if (err instanceof HttpError) {
@@ -77,9 +79,11 @@ function StoreForm({
   useEffect(() => onBusyChange(busy), [busy, onBusyChange])
 
   const [name, setName] = useState(store?.name ?? draft?.name ?? "")
+  const [kind, setKind] = useState<StoreKind>(store?.kind ?? "physical")
+  const online = kind === "online"
   const [address, setAddress] = useState(store?.address ?? draft?.address ?? "")
   const [location, setLocation] = useState<Coords | null>(
-    store ? { lat: store.lat, lng: store.lng } : (draft?.location ?? null),
+    store?.lat != null && store.lng != null ? { lat: store.lat, lng: store.lng } : (draft?.location ?? null),
   )
   const [locating, setLocating] = useState(false)
   const [errors, setErrors] = useState<{ name?: string; location?: string }>({})
@@ -121,26 +125,39 @@ function StoreForm({
     e.preventDefault()
     const found: typeof errors = {}
     if (!name.trim()) found.name = "Nhập tên cửa hàng."
-    if (!location) found.location = "Chọn vị trí cửa hàng trên bản đồ."
+    if (!online && !location) found.location = "Chọn vị trí cửa hàng trên bản đồ."
     setErrors(found)
     setFormError(null)
     if (found.name || found.location) return
 
-    const input = {
-      name: name.trim(),
-      address: address.trim() || null,
-      latitude: roundCoord(location!.lat),
-      longitude: roundCoord(location!.lng),
-    }
+    // An online store sends no address or position; the server clears them.
+    const input: StoreInput & { name: string } = online
+      ? { name: name.trim(), kind }
+      : {
+          name: name.trim(),
+          kind,
+          address: address.trim() || null,
+          latitude: roundCoord(location!.lat),
+          longitude: roundCoord(location!.lng),
+        }
     try {
       if (store) {
         // Only what changed: an unchanged store must not rewrite every linked entry.
         const patch: StoreInput = {}
+        const kindChanged = kind !== store.kind
         if (input.name !== store.name) patch.name = input.name
-        if (input.address !== store.address) patch.address = input.address
-        if (input.latitude !== roundCoord(store.lat) || input.longitude !== roundCoord(store.lng)) {
-          patch.latitude = input.latitude
-          patch.longitude = input.longitude
+        if (kindChanged) patch.kind = kind
+        if (!online) {
+          if (kindChanged || input.address !== store.address) patch.address = input.address
+          const moved =
+            store.lat === null ||
+            store.lng === null ||
+            input.latitude !== roundCoord(store.lat) ||
+            input.longitude !== roundCoord(store.lng)
+          if (kindChanged || moved) {
+            patch.latitude = input.latitude
+            patch.longitude = input.longitude
+          }
         }
         if (Object.keys(patch).length === 0) return onDone(null)
         const saved = await update.mutateAsync({ id: store.id, input: patch })
@@ -179,45 +196,80 @@ function StoreForm({
           {errors.name && <FieldError>{errors.name}</FieldError>}
         </Field>
 
-        <Field data-invalid={!!errors.location || undefined}>
-          <FieldLabel>Vị trí</FieldLabel>
-          <PlaceSearch
-            near={location}
+        <Field>
+          <FieldLabel>Loại</FieldLabel>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            value={kind}
             disabled={busy}
-            onPick={(place) => {
-              ++geocodeSeq.current
-              setLocation({ lat: place.lat, lng: place.lng })
+            // Radix emits "" when the active item is clicked again; keep the current one.
+            onValueChange={(v) => {
+              if (!v) return
+              setKind(v as StoreKind)
               setErrors((e) => ({ ...e, location: undefined }))
-              fillAddress(place.address)
-              if (place.placeName && !name.trim()) setName(place.placeName)
             }}
-          />
-          <LocationPicker value={location} onChange={(c) => void placeAt(c)} className="h-56 w-full rounded-lg border" />
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" size="sm" disabled={busy || locating} onClick={onUseDevice}>
-              {locating ? <Spinner data-icon="inline-start" /> : <LocateFixedIcon data-icon="inline-start" />}
-              Vị trí hiện tại
-            </Button>
-          </div>
-          {errors.location ? (
-            <FieldError>{errors.location}</FieldError>
-          ) : (
+            aria-label="Loại cửa hàng"
+          >
+            <ToggleGroupItem value="physical" className={TOGGLE_ON}>
+              <StoreIcon data-icon="inline-start" />
+              Có địa chỉ
+            </ToggleGroupItem>
+            <ToggleGroupItem value="online" className={TOGGLE_ON}>
+              <ShoppingCartIcon data-icon="inline-start" />
+              Online
+            </ToggleGroupItem>
+          </ToggleGroup>
+          {online && (
             <FieldDescription>
-              Chạm bản đồ hoặc kéo ghim đúng chỗ cửa hàng. Khoản chi chọn cửa hàng này sẽ lấy vị trí ở đây.
+              Shop chỉ bán online: không có địa chỉ hay vị trí. Khoản chi chọn shop này sẽ không có vị trí.
             </FieldDescription>
           )}
         </Field>
 
-        <Field>
-          <FieldLabel htmlFor="store-address">Địa chỉ</FieldLabel>
-          <Input
-            id="store-address"
-            maxLength={255}
-            placeholder="Tự điền khi chọn vị trí"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-          />
-        </Field>
+        {!online && (
+          <Field data-invalid={!!errors.location || undefined}>
+            <FieldLabel>Vị trí</FieldLabel>
+            <PlaceSearch
+              near={location}
+              disabled={busy}
+              onPick={(place) => {
+                ++geocodeSeq.current
+                setLocation({ lat: place.lat, lng: place.lng })
+                setErrors((e) => ({ ...e, location: undefined }))
+                fillAddress(place.address)
+                if (place.placeName && !name.trim()) setName(place.placeName)
+              }}
+            />
+            <LocationPicker value={location} onChange={(c) => void placeAt(c)} className="h-56 w-full rounded-lg border" />
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" disabled={busy || locating} onClick={onUseDevice}>
+                {locating ? <Spinner data-icon="inline-start" /> : <LocateFixedIcon data-icon="inline-start" />}
+                Vị trí hiện tại
+              </Button>
+            </div>
+            {errors.location ? (
+              <FieldError>{errors.location}</FieldError>
+            ) : (
+              <FieldDescription>
+                Chạm bản đồ hoặc kéo ghim đúng chỗ cửa hàng. Khoản chi chọn cửa hàng này sẽ lấy vị trí ở đây.
+              </FieldDescription>
+            )}
+          </Field>
+        )}
+
+        {!online && (
+          <Field>
+            <FieldLabel htmlFor="store-address">Địa chỉ</FieldLabel>
+            <Input
+              id="store-address"
+              maxLength={255}
+              placeholder="Tự điền khi chọn vị trí"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+            />
+          </Field>
+        )}
       </FieldGroup>
 
       <DialogFooter className="m-0 shrink-0 rounded-none pb-[max(1rem,env(safe-area-inset-bottom))] sm:rounded-b-xl sm:pb-4">

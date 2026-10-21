@@ -14,7 +14,7 @@ import { toast } from "sonner"
 
 import { ConfirmDialog } from "@/components/dashboard/stores/confirm-dialog"
 import { StoreFormDialog, storeError } from "@/components/dashboard/stores/store-form-dialog"
-import { StoreStatusBadge } from "@/components/dashboard/stores/store-status-badge"
+import { StoreKindIcon, storePlace, StoreStatusBadge } from "@/components/dashboard/stores/store-status-badge"
 import { EmptyState, QueryContent } from "@/components/shared/query-state"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -92,14 +92,14 @@ function StoreActions({
 function StoreRow({ store, onEdit, onDelete }: { store: MyStore; onEdit: () => void; onDelete: () => void }) {
   return (
     <li className="flex items-start gap-3 py-3">
-      <StoreIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <StoreKindIcon kind={store.kind} className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">{store.name}</span>
           <StoreStatusBadge status={store.status} />
         </div>
         <p className="text-sm text-muted-foreground">
-          {[store.address ?? "Chưa có địa chỉ", `${store.entryCount} khoản chi`].join(" · ")}
+          {[storePlace(store), `${store.entryCount} khoản chi`].join(" · ")}
         </p>
         {store.status === "global" && (
           <p className="text-xs text-muted-foreground">Đã công khai, chỉ admin sửa hoặc xoá được.</p>

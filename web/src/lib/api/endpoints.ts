@@ -78,7 +78,7 @@ export const storesApi = {
   search: (query: { q?: string; lat?: number; lng?: number; limit?: number }, signal?: AbortSignal) =>
     apiFetch<Store[]>("/stores", { query, signal }),
   mine: () => apiFetch<MyStore[]>("/stores/mine"),
-  create: (body: Required<Pick<StoreInput, "name" | "latitude" | "longitude">> & StoreInput) =>
+  create: (body: StoreInput & { name: string }) =>
     apiFetch<Store>("/stores", { method: "POST", body }),
   update: (id: string, body: StoreInput) => apiFetch<Store>(`/stores/${id}`, { method: "PATCH", body }),
   remove: (id: string) => apiFetch<void>(`/stores/${id}`, { method: "DELETE" }),
@@ -89,7 +89,7 @@ export const storesApi = {
 // Admin only (plans/09). Never lists personal stores.
 export const adminStoresApi = {
   list: (query: AdminStoreQuery) => apiFetch<Paginated<AdminStore>>("/admin/stores", { query }),
-  create: (body: Required<Pick<StoreInput, "name" | "latitude" | "longitude">> & StoreInput) =>
+  create: (body: StoreInput & { name: string }) =>
     apiFetch<Store>("/admin/stores", { method: "POST", body }),
   update: (id: string, body: StoreInput) => apiFetch<Store>(`/admin/stores/${id}`, { method: "PATCH", body }),
   remove: (id: string) => apiFetch<void>(`/admin/stores/${id}`, { method: "DELETE" }),
