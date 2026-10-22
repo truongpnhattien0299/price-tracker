@@ -100,12 +100,14 @@ export const adminStoresApi = {
     apiFetch<{ movedEntries: number }>(`/admin/stores/${id}/merge`, { method: "POST", body: { targetId } }),
 }
 
-// BFF routes (not the NestJS API): Nominatim behind one shared rate limit, Photon for search.
+// BFF routes (not the NestJS API): Nominatim behind one shared rate limit, Photon for search,
+// Google Maps share links resolved server-side.
 export const geocodeApi = {
   reverse: (lat: number, lng: number) =>
     request<ReverseGeocode>("/api/geocode/reverse", { query: { lat, lng } }),
   search: (q: string, near: { lat: number; lng: number } | null, signal?: AbortSignal) =>
     request<PlaceSuggestion[]>("/api/geocode/search", { query: { q, lat: near?.lat, lng: near?.lng }, signal }),
+  mapsLink: (url: string) => request<PlaceSuggestion>("/api/geocode/maps-link", { query: { url } }),
 }
 
 export const uploadsApi = {

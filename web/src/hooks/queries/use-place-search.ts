@@ -1,12 +1,14 @@
 "use client"
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query"
 
 import { geocodeApi } from "@/lib/api/endpoints"
 import { qk } from "@/lib/query/keys"
 import type { Coords } from "@/lib/photo-location"
 
 export const PLACE_SEARCH_MIN = 2
+/** The BFF search route refuses longer terms. */
+export const PLACE_SEARCH_MAX = 100
 
 /** Address / place suggestions for the entry form's map (Photon via the BFF). `q` must already be debounced. */
 export function usePlaceSearch(q: string, near: Coords | null) {
@@ -16,9 +18,14 @@ export function usePlaceSearch(q: string, near: Coords | null) {
   return useQuery({
     queryKey: qk.placeSearch(term.toLowerCase(), bias),
     queryFn: ({ signal }) => geocodeApi.search(term, bias, signal),
-    enabled: term.length >= PLACE_SEARCH_MIN,
+    enabled: term.length >= PLACE_SEARCH_MIN && term.length <= PLACE_SEARCH_MAX,
     staleTime: 60 * 60_000,
     placeholderData: keepPreviousData,
     retry: false,
   })
+}
+
+/** A pasted Google Maps share link → its place (name, pin, address). One-shot, so a mutation. */
+export function useMapsLink() {
+  return useMutation({ mutationFn: (url: string) => geocodeApi.mapsLink(url) })
 }
