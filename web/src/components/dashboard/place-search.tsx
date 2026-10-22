@@ -1,11 +1,13 @@
 "use client"
 
 import { MapPinIcon, SearchIcon, XIcon } from "lucide-react"
-import { useEffect, useId, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
+import { toast } from "sonner"
 
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group"
 import { Spinner } from "@/components/ui/spinner"
-import { PLACE_SEARCH_MIN, usePlaceSearch } from "@/hooks/queries/use-place-search"
+import { PLACE_SEARCH_MAX, PLACE_SEARCH_MIN, useMapsLink, usePlaceSearch } from "@/hooks/queries/use-place-search"
+import { findMapsLink } from "@/lib/maps-link"
 import type { Coords } from "@/lib/photo-location"
 import { cn } from "@/lib/utils"
 import type { PlaceSuggestion } from "@/types/api"
@@ -16,6 +18,7 @@ const DEBOUNCE_MS = 350
  * Address / place search above the entry form's map: type, pick a suggestion,
  * and the pin jumps there. A hand-rolled combobox (ARIA 1.2 pattern) rather
  * than a popover, so the list stays inside the dialog's scroll area.
+ * Pasting a Google Maps share link picks that place straight away.
  */
 export function PlaceSearch({
   near,
@@ -38,16 +41,45 @@ export function PlaceSearch({
     return () => clearTimeout(t)
   }, [text])
 
-  const search = usePlaceSearch(term, near)
+  const mapsLink = useMapsLink()
+  // The link being resolved; typing anything else drops its answer.
+  const pendingLink = useRef<string | null>(null)
+  const link = findMapsLink(text)
+
+  const search = usePlaceSearch(link ? "" : term, near)
   const results = search.data ?? []
-  const searchable = text.trim().length >= PLACE_SEARCH_MIN
+  const searchable = !link && text.trim().length >= PLACE_SEARCH_MIN && text.trim().length <= PLACE_SEARCH_MAX
   const settled = term === text && !search.isFetching
   const showList = open && searchable && (results.length > 0 || settled)
 
   // A new result set starts with nothing highlighted.
   useEffect(() => setActive(-1), [search.data])
 
+  // A Google Maps link is resolved once the text settles, like a search term,
+  // so typing one out by hand does not fire a request per character.
+  useEffect(() => {
+    const url = findMapsLink(term)
+    pendingLink.current = url
+    if (!url) return
+    mapsLink.mutate(url, {
+      onSuccess: (place) => {
+        if (pendingLink.current === url) pick(place)
+      },
+      onError: (err) => {
+        if (pendingLink.current === url) toast.error(err.message, { id: "maps-link-failed" })
+      },
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs per settled term only
+  }, [term])
+
+  function onTextChange(value: string) {
+    setText(value)
+    pendingLink.current = null
+    setOpen(!findMapsLink(value))
+  }
+
   function pick(place: PlaceSuggestion) {
+    pendingLink.current = null
     setText(place.name)
     setTerm(place.name)
     setOpen(false)
@@ -98,27 +130,26 @@ export function PlaceSearch({
           aria-activedescendant={showList && active >= 0 ? optionId(active) : undefined}
           autoComplete="off"
           enterKeyHint="search"
-          placeholder="Tìm địa chỉ, cửa hàng, chợ…"
-          maxLength={100}
+          placeholder="Tìm địa chỉ, cửa hàng hoặc dán link Google Maps"
+          // Long enough for a full google.com/maps URL; search itself stops at PLACE_SEARCH_MAX.
+          maxLength={2000}
           disabled={disabled}
           value={text}
-          onChange={(e) => {
-            setText(e.target.value)
-            setOpen(true)
-          }}
+          onChange={(e) => onTextChange(e.target.value)}
           onFocus={() => setOpen(true)}
           onBlur={() => setOpen(false)}
           onKeyDown={onKeyDown}
         />
-        {(search.isFetching || text) && (
+        {(search.isFetching || mapsLink.isPending || text) && (
           <InputGroupAddon align="inline-end">
-            {search.isFetching ? (
+            {search.isFetching || mapsLink.isPending ? (
               <Spinner />
             ) : (
               <InputGroupButton
                 size="icon-xs"
                 aria-label="Xoá từ khoá"
                 onClick={() => {
+                  pendingLink.current = null
                   setText("")
                   setTerm("")
                 }}
